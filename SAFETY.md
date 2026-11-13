@@ -1,5 +1,8 @@
 # Safety gate for turner vendor_boot development
 
+[简体中文](SAFETY.zh-CN.md) | [**English**](SAFETY.md)
+
+
 **Development only — NOT FLASH-READY.** This repository is incomplete and no image built from it has been verified to boot on Redmi K Pad. Do not flash CI artifacts or redistribute them as stable releases.
 
 ## Non-negotiable checks before sharing a flashable image
