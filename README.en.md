@@ -34,7 +34,7 @@ Bring the upstream **YARP GUI2/LVGL user interface and core recovery functions**
 
 | Item | Status |
 | --- | --- |
-| Core device-tree configuration | Partially imported |
+| Core device-tree, libinit and BootControl sources | Partially imported; prebuilts and further dependencies are missing |
 | MT6991 init, fstab and vold patches | Partially imported; dependencies still need review |
 | Skyward fast/slow images | Layout and init comparison documents recorded; file dependencies not fully audited |
 | Prebuilt drivers, firmware and HALs | **Not fully imported** |
@@ -54,6 +54,9 @@ Before testing on hardware, prepare a verified stock image, a recovery/rollback 
 - [Skyward Vendor Boot structure analysis](analysis/SKYWARD_VENDOR_BOOT_COMPARISON.md)
 - [Skyward init comparison](analysis/SKYWARD_INIT_AUDIT.md)
 - [Read-only Vendor Boot layout verifier](tools/verify_vendor_boot.py)
+- [Pinned-hash Skyward fragment extractor](tools/extract_vendor_boot_reference.py)
+- [Skyward RECOVERY file inventory and differences](analysis/SKYWARD_PAYLOAD_INVENTORY.md)
+- [USB controller and MTP init difference audit](analysis/USB_CONTROLLER_MTP_AUDIT.md)
 
 ## References and credits
 
