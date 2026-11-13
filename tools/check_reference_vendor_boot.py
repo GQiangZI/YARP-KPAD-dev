@@ -4,7 +4,8 @@
 This is only a structural test; it does not certify boot, crypto, or UI.
 """
 import argparse
-import sys
+from pathlib import Path
+import struct
 
 from verify_vendor_boot import parse
 
@@ -22,7 +23,23 @@ def check(path):
     for token in REQUIRED_CMDLINE:
         if token not in result["vendor_cmdline"]:
             raise ValueError("required boot command-line token missing: " + token)
-    print("PASS: structurally matches known-good Skyward PLATFORM, DTB and required cmdline")
+    image = Path(path).read_bytes()
+    if len(image) < 64 or image[-64:-60] != b"AVBf":
+        raise ValueError("missing AVB footer (both working Skyward images have one)")
+    magic, major, minor, original_size, vbmeta_offset, vbmeta_size, _ = struct.unpack(
+        ">4sIIQQQ28s", image[-64:]
+    )
+    if major != 1 or vbmeta_size < 256 or not (
+        original_size <= vbmeta_offset and vbmeta_offset + vbmeta_size <= len(image) - 64
+    ):
+        raise ValueError("unexpected AVB footer version or offsets")
+    vbmeta = image[vbmeta_offset:vbmeta_offset + vbmeta_size]
+    if vbmeta[:4] != b"AVB0":
+        raise ValueError("AVB footer does not point to vbmeta")
+    algorithm = struct.unpack_from(">I", vbmeta, 28)[0]
+    if algorithm != 0:
+        raise ValueError("AVB algorithm differs from working Skyward images (expected NONE)")
+    print("PASS: Skyward PLATFORM, DTB, required cmdline and AVB algorithm NONE")
     print("WARNING: this is not a hardware boot or decryption test")
 
 
