@@ -1,0 +1,609 @@
+name: Build YARP turner (MANUAL - UNTESTED)
+
+# YARP base: TWRP-Test/platform_manifest_twrp_aosp, branch twrp-16.0
+# (TWRP 3.7.1_16, GUI2/LVGL) + PR #42 (OTG hotplug fix, applied below).
+# Device tree is this repo itself (checked out as device-tree, then copied
+# to device/xiaomi/turner). Builds vendor_boot.img (recovery lives in
+# vendor_boot on turner; there is no dedicated recovery partition).
+# Dispatch: Actions -> Build TWRP (turner) — YARP base -> Run workflow.
+#
+# v5 (2026-11-08): the 100G+ sync is NOT a repo-version bug -- pinning
+# --repo-rev=v2.65 does NOT help, because v2.65 itself contains the
+# fallback. Proof (git-repo v2.65, project.py):
+#   * default.xml sets <default revision="refs/tags/android-16.0.0_r1">,
+#     i.e. AOSP projects are pinned to a TAG -> resolved to a commit id.
+#   * project.py:3211 -- with `is_sha1 and current_branch_only`, if the
+#     target commit was not obtained repo re-runs _RemoteFetch with
+#     `depth=None` ("to avoid infinite recursion").
+#   * project.py:2980 -- depth=None AND an existing .git/shallow file
+#     (which --depth=1 created) => append --depth=2147483647 (INT_MAX)
+#     => unshallow => full history of every prebuilt => 100G+.
+#   * --optimized-fetch pushes SHA-pinned projects onto exactly that
+#     immutable-revision path. Dropped.
+# Fix: no more --depth=1. Use --partial-clone --clone-filter=blob:none
+# (native repo v2.65 option, repo script:405). Blobless clones keep full
+# commit/tree history but defer blobs; no `shallow` file exists, so the
+# INT_MAX branch can never fire and old prebuilt binaries never land on
+# disk. REPO_ALLOW_SHALLOW=0 is a belt-and-braces fallback.
+# Also: slim local manifest drops 37 unused prebuilts.
+# v6 (2026-11-08, after run #12): the v5 `with:` inputs on Maximize
+# build space made that step exit 1 in 3m25s (annotation step:4:214).
+# Run #11 proved the bare `easimon/maximize-build-space@master` +
+# `slimhub_actions` Cleanup combo works, so v6 reverts ALL v5 inputs
+# except root-reserve-mb: 4096 -- a pure arithmetic value (no extra
+# commands), which fixes run #10's `/` = 1GiB crash. slimhub_actions
+# already deletes the toolchains, so remove-* on maximize was redundant.
+# v6 also ADDS the missing .github/local_manifests/turner-slim.xml --
+# run #12 never reached Sync, but v5's `cp` would have failed there.
+# v7 (2026-11-08, after run #13): v6's revert went too far. Run #13
+# died in 2m30s at the new Verify disk layout guard: `/` had only
+# 100MiB free (workspace LV had 129G free). The bare Maximize never
+# removes the preinstalled toolchains from `/`, so `/` stays full --
+# v6's "remove-* is redundant" assumption was wrong (slimhub's Cleanup
+# evidently does not free `/`). v7 puts the four remove-* flags back
+# (`true`) and keeps ONLY remove-docker-images at `false` (the one
+# command that does not exist on the runner: `sudo: docker: command
+# not found`, run #12). swap-size-mb stays dropped (zram + default
+# 4G swap are enough; -j1 is the RAM control).
+# v8 (2026-11-08, after run #14): v7 STILL died at the guard with
+# `/` at exactly 100MiB free -- and 100MiB is exactly the DEFAULT
+# temp-reserve-mb. Root cause, read from the action's own source
+# (easimon/maximize-build-space@master): it creates TWO loop PVs --
+# /pv.img on `/` sized (free(`/`) - root-reserve-mb), and
+# /mnt/tmp-pv.img sized (free(`/mnt`) - temp-reserve-mb). On THIS
+# runner /mnt is NOT a separate disk, it is a directory on `/`
+# (the Verify df prints /dev/root twice, no separate /mnt line).
+# So the temp PV is created on `/` AFTER the root PV, and it eats
+# the root reserve down to temp-reserve-mb. Final free on `/` is
+# ALWAYS temp-reserve-mb, whatever root-reserve-mb says. v8 sets
+# temp-reserve-mb: 3072, so `/` keeps ~3GiB (guard needs 2GiB)
+# and the temp PV stays a valid ~1GiB (root 4096 - temp 3072).
+# If /mnt ever is a separate disk again, this only shrinks its
+# PV by 3GiB -- harmless.
+# Run #10's DISK FULL fix (remove 8G swapfile, -j1, ccache 2G) is kept.
+# v9 (2026-11-08, after run #17): run #17 died exactly like #9/#11 --
+# Build vendor_boot.img, ~1h18m in, runner lost, no compile error, no
+# log uploaded. #9/#11 screenshots PROVED the cause on those runs:
+# link phase, soong 131/131 done, swap 74Mi -> 11Gi in ~3 min, RAM
+# 14Gi -> 321Mi, runner dead. v7's "zram + default 4G swap are enough"
+# is therefore wrong -- the runner's own swap was already exhausted.
+# v9 brings the disk swapfile back, but NOT v3's way: v3 put a fixed
+# 8G file on `/` (the small partition) and run #10 died of DISK FULL
+# ~2s into Build. v9 instead creates the file AFTER .repo is deleted
+# (Free disk step), ON the workspace volume ($GITHUB_WORKSPACE, the
+# 129G-free LV -- not `/`), and sizes it from measured free space:
+# 16G if >=48G free, 8G if >=28G, else skip. Best effort, never fails
+# the build. If #18 still dies in the link phase, the per-minute
+# free/df trail in the Build log will show whether swap or disk ran
+# out first -- that trail is the one thing #17's lost log could not
+# give us, so v9 does not wait for the #17 screenshot to proceed.
+# v10 (2026-11-08, after the run that hung 25 min posting no tip line):
+# The tip loop echoes every 60s, so 25 minutes of silence while the
+# step still spins is NOT a slow compile -- it is the box thrashing so
+# hard that even `echo` cannot get a timeslice. v9's swap numbers
+# explain it: "Swap 89Mi -> 3.4Gi -> 6.9Gi -> 13Gi" in 3 minutes on a
+# 15GiB runner, while RAM sat pinned at 15Gi used. That growth was
+# ZRAM, not the swapfile: the Setup zram step ran PERCENT=90 (a
+# ~13.5GiB zram device) with PRIORITY=1000 (fill zram BEFORE disk).
+# zram pages live IN RAM, so that "safety net" was consuming the
+# physical pages the compiler needed -- it was the OOM cause. v10:
+#   (a) zram PERCENT 90 -> 25 (~3.7GiB, spike absorber only) and
+#       PRIORITY 1000 -> 100, so the workspace swapfile takes the bulk;
+#   (b) GOMAXPROCS=2 + GOGC=50 + LLVM_PARALLEL_LINK_JOBS=1: soong_build
+#       is Go, and `-j1` caps ONLY ninja. GOGC=50 halves the GC target,
+#       GOMAXPROCS=2 caps the parallel allocators -- together they take
+#       soong_build peak from ~5-6G to ~3G on this slim manifest;
+#   (c) swapfile tiers 24G/16G/8G (was 16G/8G);
+#   (d) the build runs inside a systemd --scope with MemoryMax=13G, so
+#       an over-limit build is killed by the cgroup OOM killer alone and
+#       the runner survives to upload build.log. Self-tested; falls back
+#       to an unguarded run if scopes are unavailable.
+# If it still dies: the tip line now also prints `swapon --show`, which
+# tells zram usage from disk swap usage instantly.
+
+# v11 (2026-11-08): the make goal used to be built by string glue --
+# `m -j1 <input>image` -- so the dispatch box had to be fed the mangled
+# string `vendorboot`. The real goal is build/make/core/main.mk:1316-1317:
+#   .PHONY: vendorbootimage
+#   vendorbootimage: $(INSTALLED_VENDOR_BOOTIMAGE_TARGET)
+# (no underscore), so `vendor_boot` + `image` matches NO rule, and `m`
+# only reports it AFTER kati finishes the whole analysis (~15 min in).
+# It never surfaced because every run so far died earlier, inside soong
+# bootstrap / kati (log stalled at `[ 99% 130/131] cp
+# out/host/linux-x86/bin/soong_build`). v11 keeps the input readable
+# (`vendor_boot`) and resolves the goal from the synced tree by grepping
+# main.mk/Makefile, printing `::notice title=Image target::m <goal>`.
+# No match => fail in seconds, listing the bootimage goals that exist.
+
+on:
+  workflow_dispatch:
+    inputs:
+      TWRP_MANIFEST_URL:
+        description: "TWRP manifest url"
+        required: true
+        default: "https://github.com/TWRP-Test/platform_manifest_twrp_aosp"
+      TWRP_MANIFEST_BRANCH:
+        description: "TWRP branch"
+        required: true
+        default: "twrp-16.0"
+      DEVICE_TREE_BRANCH:
+        description: "Device tree branch (this repo)"
+        required: true
+        default: "main"
+      BUILD_PARTITION:
+        description: "Build partition"
+        required: true
+        default: "vendor_boot"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    # If any code path still honours a stray --depth, convert it to a
+    # blob:none partial clone instead of a shallow clone (git-repo
+    # v2.65 init.py:144, sync.py:2296). Prevents the INT_MAX unshallow.
+    env:
+      REPO_ALLOW_SHALLOW: "0"
+    defaults:
+      run:
+        # explicit bash adds pipefail; without it a failed `m | tee` passed as success
+        shell: bash
+    steps:
+    - name: Show build info
+      run: |
+        {
+          echo 'BUILD_INFO<<EOF'
+          echo
+          echo Manifest url: ${{ github.event.inputs.TWRP_MANIFEST_URL }}
+          echo Manifest branch: ${{ github.event.inputs.TWRP_MANIFEST_BRANCH }}
+          echo Device tree branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}
+          echo Device path: xiaomi/turner
+          echo Device name: turner
+          echo Build target: ${{ github.event.inputs.BUILD_PARTITION }}.img
+          echo Build date: `date`
+          echo
+          echo EOF
+        } >> "$GITHUB_ENV"
+        echo BUILD_DATE=`date +%F` >> "$GITHUB_ENV"
+
+    - name: Cleanup
+      uses: rokibhasansagar/slimhub_actions@main
+
+    - name: Maximize build space
+      # Run #12 (88de5758) failed here in 3m25s: the action's
+      # remove-docker-images step runs `sudo docker ...`, but the
+      # runner has no docker binary (`sudo: docker: command not found`).
+      # Run #13 (v6, all remove-* dropped) then died in 2m30s at the
+      # Verify disk layout guard: `/` had only 100MiB free, because
+      # without remove-* the preinstalled toolchains (dotnet, Android
+      # SDK, Haskell, CodeQL -- tens of GB) are never removed from `/`.
+      # So: remove the four toolchains, but NEVER call docker.
+      # root-reserve-mb 4096 leaves `/` room for runner diag logs, apt
+      # and ccache symlinks (run #10 died with `/` at ~1GiB). No
+      # swap-size-mb: v10 controls RAM with zram 25% + GOGC + a cgroup
+      # cap, not by growing the swap device.
+      uses: easimon/maximize-build-space@master
+      with:
+        root-reserve-mb: 4096
+        # v8: /mnt is a directory on `/` on this runner (not a separate
+        # disk), so the temp PV loop file /mnt/tmp-pv.img is created on
+        # `/` AFTER the root PV and eats the root reserve. Final free
+        # space on `/` always ends up equal to temp-reserve-mb, so set
+        # it to 3072 (guard needs 2048; temp PV stays ~1GiB and valid).
+        temp-reserve-mb: 3072
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+        remove-docker-images: 'false'
+
+    - name: Verify disk layout
+      # Fast, cheap guard: if Maximize ever half-succeeds again, fail here
+      # with a full df dump instead of 16 minutes later with no logs.
+      run: |
+        df -h / /mnt "$GITHUB_WORKSPACE" || true
+        free -h || true
+        root_avail=$(df -BM --output=avail / | tail -1 | tr -dc '0-9')
+        ws_avail=$(df -BM --output=avail "$GITHUB_WORKSPACE" | tail -1 | tr -dc '0-9')
+        echo "::notice title=Disk layout::root ${root_avail}MiB, workspace ${ws_avail}MiB free"
+        if [ "$root_avail" -lt 2048 ]; then
+          echo "::error title=Disk::root only ${root_avail}MiB free; runner diag logs will fail"
+          exit 1
+        fi
+
+    - name: Setup ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        create-symlink: true
+
+    - name: Setup zram
+      # Best effort only: the 14.1 build succeeded without zram, and the
+      # runner kernel (7.0.0-1017-azure) has no linux-modules-extra package
+      # in apt, so a failed zram setup must never kill the build.
+      #
+      # v10 CRITICAL: zram pages live IN RAM. With PERCENT=90 on a 15GiB
+      # runner the device is ~13.5GiB, and PRIORITY=1000 made the kernel
+      # fill it FIRST -- that is the "Swap 89Mi -> 3.4Gi -> 6.9Gi -> 13Gi
+      # in 3 min, RAM pinned at 15Gi" slide from the hung run, i.e. the
+      # swap reserve was consuming the compiler's physical pages. 25%
+      # (~3.7GiB) keeps zram as a short-spike absorber; the workspace
+      # swapfile (on disk) carries the bulk, which is what we want.
+      run: |
+        sudo apt-get update -y || true
+        sudo apt-get install -y zram-tools || true
+        sudo apt-get install -y "linux-modules-extra-$(uname -r)" || true
+        if sudo modprobe zram 2>/dev/null; then
+          [ -f /etc/default/zramswap ] && sudo sed -i 's/^#*PERCENT=.*/PERCENT=25/' /etc/default/zramswap || true
+          [ -f /etc/default/zramswap ] && sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap || true
+          sudo systemctl restart zramswap || true
+          zramctl || true
+          echo "::notice title=Zram::enabled at PERCENT=25 PRIORITY=100 (v10; 90/1000 ate the RAM)"
+        else
+          echo "::warning title=Zram::zram module unavailable, building without zram swap"
+        fi
+        # default balance: the bulk swap is on disk, so do not let the
+        # kernel over-eagerly page out live compiler text.
+        sudo sysctl -w vm.swappiness=60 || true
+        exit 0
+
+    - name: Setup environment
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt update && sudo apt upgrade -y
+        # Pin the launcher AND the implementation. Note: --repo-rev
+        # alone does NOT fix the 100G sync (v2.65 has the unshallow
+        # fallback too); the fix is --partial-clone in the Sync step.
+        mkdir -p "$HOME/bin"
+        curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+        chmod a+x "$HOME/bin/repo"
+        echo "$HOME/bin" >> "$GITHUB_PATH"
+        "$HOME/bin/repo" --version || true
+        # zstd is required by patches/build_make (ramdisk compression);
+        # the rest are the standard AOSP build tools
+        for i in 1 2 3; do sudo apt-get -o Acquire::Retries=3 update && break; sleep 15; done
+        sudo apt-get -o Acquire::Retries=3 install -y bc bison build-essential curl flex git gnupg gperf libssl-dev \
+          libxml2-utils lz4 python-is-python3 rsync unzip xsltproc zip zlib1g-dev zstd
+        git config --global user.name ${{ github.actor }}
+        git config --global user.email ${{ github.actor }}@users.noreply.github.com
+
+    - uses: actions/checkout@v4
+      with:
+        path: device-tree
+        ref: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}
+
+    - name: Preflight complete turner inputs before expensive source sync
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 device-tree/tools/check_turner_inputs.py
+        test "${{ github.event.inputs.BUILD_PARTITION }}" = "vendor_boot"
+        test "${{ github.event.inputs.TWRP_MANIFEST_BRANCH }}" = "twrp-16.0"
+        test "${{ github.event.inputs.TWRP_MANIFEST_URL }}" = "https://github.com/TWRP-Test/platform_manifest_twrp_aosp"
+        echo "::warning title=Development image only::No YARP image has passed Redmi K Pad hardware tests."
+
+    - name: Sync TWRP 16.0 (YARP) source
+      run: |
+        # --partial-clone --clone-filter=blob:none is a native repo v2.65
+        # option (repo script:405). Do NOT pass --depth=1: a shallow clone
+        # creates .git/shallow, and the tag-pinned AOSP revision can make
+        # repo fall back to --depth=2147483647 (INT_MAX) = full history.
+        repo init -u ${{ github.event.inputs.TWRP_MANIFEST_URL }} \
+          -b ${{ github.event.inputs.TWRP_MANIFEST_BRANCH }} \
+          --partial-clone --clone-filter=blob:none \
+          --no-clone-bundle --repo-rev=v2.65
+
+        # Slim local manifest: twrp-default.xml already includes
+        # remove-minimal.xml (605 removals), but ~65 prebuilts/* survive.
+        # If a build later complains about a missing prebuilt, delete the
+        # matching <remove-project> line in that file and re-run.
+        mkdir -p .repo/local_manifests
+        cp device-tree/.github/local_manifests/turner-slim.xml \
+          .repo/local_manifests/turner-slim.xml
+
+        (while true; do
+          echo "Syncing source..."
+          df -h / "$GITHUB_WORKSPACE"
+          sleep 60
+        done) &
+        TIP_PID=$!
+        trap 'kill "$TIP_PID" 2>/dev/null || true; wait "$TIP_PID" 2>/dev/null || true' EXIT
+        # -c + --no-tags + --no-clone-bundle are the proven AOSP size
+        # reducers. --optimized-fetch is REMOVED: it is what drives
+        # SHA-pinned projects into the immutable-revision fallback.
+        # `repo sync` has NO --depth option (run #8) -- do NOT re-add it.
+        set +e
+        repo sync -c -j"$(nproc --all)" --force-sync \
+          --no-clone-bundle --no-tags --prune
+        RC=$?
+        set -e
+        kill "$TIP_PID" 2>/dev/null || true
+        wait "$TIP_PID" 2>/dev/null || true
+        trap - EXIT
+
+        # Verify the partial clone actually took effect. A server that
+        # ignores --filter silently degrades to a FULL clone -> 100G again.
+        PCHECK=$(git -C build/make config --get-regexp 'partialclone|promisor' 2>/dev/null | tr '\n' ';')
+        if [ -n "$PCHECK" ]; then
+          echo "::notice title=Partial clone OK::$PCHECK"
+        else
+          echo "::warning title=Partial clone NOT active::server ignored --filter; sync was FULL. See 05-depth1-100G根因与根治.md for the fallback plan."
+        fi
+        echo "::notice title=Sync size::.repo=$(du -sh .repo 2>/dev/null | cut -f1)"
+        echo "::group::Largest workspace directories after sync"
+        du -xhd1 "$GITHUB_WORKSPACE" 2>/dev/null | sort -h | tail -20 || true
+        echo "::endgroup::"
+        df -h / "$GITHUB_WORKSPACE"
+        echo "::notice title=Disk after sync::root $(df -h --output=avail / | tail -1), workspace $(df -h --output=avail "$GITHUB_WORKSPACE" | tail -1)"
+        exit $RC
+
+    - name: Apply PR #42 (OTG hotplug fix for GUI2)
+      # A blob:none partial clone KEEPS full commit history, so the merge
+      # base is present -- `git fetch --unshallow` is neither needed nor
+      # valid (it errors on a complete/non-shallow repo). Keep
+      # --allow-unrelated-histories as a cheap safety net.
+      run: |
+        cd bootable/recovery
+        git fetch https://github.com/TWRP-Test/android_bootable_recovery.git pull/42/head
+        git merge --no-edit --allow-unrelated-histories FETCH_HEAD
+
+    - name: Setup device tree
+      run: |
+        mkdir -p device/xiaomi
+        cp -a device-tree device/xiaomi/turner
+        echo -e "$BUILD_INFO" > device/xiaomi/turner/INFO.txt
+        echo "Change log:" >> device/xiaomi/turner/INFO.txt
+        git -C device-tree log --pretty=format:"- %h-%an: %s" -20 >> device/xiaomi/turner/INFO.txt
+
+    - name: Apply device-tree patches
+      run: |
+        # patches/<project path with / as _>/*.patch, e.g. build_make -> build/make
+        # (see patches/PATCHES.md for which 14.1 patches were dropped on 16.0 and why)
+        for d in device/xiaomi/turner/patches/*/; do
+          t=$(basename "$d"); t=${t//_//}
+          for p in "$d"*.patch; do git -C "$t" apply "$GITHUB_WORKSPACE/$p"; done
+        done
+
+    - name: Free disk (delete .repo metadata)
+      # YuKongA's advice: delete .repo after sync to reclaim git objects.
+      # v5: with blob:none the object store is already much smaller, but
+      # removing it still frees space. Timing matters:
+      # ALL git ops (Apply PR merge, device-tree patch `git apply`) run
+      # BEFORE this step; the build itself only reads files, so .repo
+      # (manifest + per-project git dirs) is no longer needed. If a build
+      # ever complains about missing git metadata, remove this step.
+      # v4: print full `df -h` + biggest dirs so the next disk-full
+      # failure shows exactly what was left and what ate it.
+      run: |
+        du -sh .repo || true
+        rm -rf .repo
+        echo "::notice title=Disk after .repo removal::$(df -h --output=avail / | tail -1) free"
+        df -h
+        du -sh -- * 2>/dev/null | sort -rh | head -15 || true
+
+    - name: Add disk swap (link-phase safety net)
+      # v9: runs #9/#11 PROVED the link phase exhausts swap (74Mi ->
+      # 11Gi in ~3 min, RAM 14Gi -> 321Mi, runner dead) even with -j1.
+      # v3's swapfile was the right idea in the wrong place: a fixed 8G
+      # file on `/` helped kill run #10 with DISK FULL. This version
+      # runs AFTER .repo is deleted and puts the file on the workspace
+      # volume ($GITHUB_WORKSPACE, the large LV), sized from measured
+      # free space -- 16G if >=48G free, 8G if >=28G, else skip.
+      # v10: tiers raised to 24G/16G/8G, because zram is now capped at
+      # ~3.7GiB -- the disk swapfile is the real reserve for the link
+      # phase and must be deep enough to matter.
+      # Best effort only: never fail the build here.
+      run: |
+        set +e
+        ws_avail=$(df -BM --output=avail "$GITHUB_WORKSPACE" | tail -1 | tr -dc '0-9')
+        echo "Workspace free: ${ws_avail}MiB"
+        # Keep at least ~32GiB free for out/ growth after allocating swap.
+        if [ "$ws_avail" -ge 81920 ]; then SWAP_GB=24;
+        elif [ "$ws_avail" -ge 57344 ]; then SWAP_GB=16;
+        elif [ "$ws_avail" -ge 40960 ]; then SWAP_GB=8;
+        else echo "::warning title=Swapfile::only ${ws_avail}MiB free, skipping disk swap"; free -h || true; exit 0; fi
+        SWAPFILE="$GITHUB_WORKSPACE/.swapfile"
+        if sudo fallocate -l "${SWAP_GB}G" "$SWAPFILE" 2>/dev/null || sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=$((SWAP_GB * 1024)) 2>/dev/null; then
+          sudo chmod 600 "$SWAPFILE"
+          if sudo mkswap "$SWAPFILE" && sudo swapon "$SWAPFILE"; then
+            echo "::notice title=Swapfile::${SWAP_GB}G disk swap added on workspace volume"
+          else
+            echo "::warning title=Swapfile::mkswap/swapon failed, continuing without it"
+            sudo rm -f "$SWAPFILE" || true
+          fi
+        else
+          echo "::warning title=Swapfile::could not allocate ${SWAP_GB}G, continuing without it"
+        fi
+        free -h || true
+        swapon --show || true
+        exit 0
+
+    - name: Build vendor_boot.img
+      # Low-memory: -j1 caps concurrent link jobs at ONE. -j2 OOM'd in
+      # run #9 (swap 74Mi -> 11Gi in 3 min during "Building TWRP...",
+      # runner died; soong_build had already finished 131/131).
+      # v4: NO disk swapfile -- run #10 died of DISK FULL ("No space
+      # left on device", runner could not even write its own logs) ~2 s
+      # into this step; the 8G swapfile took the last free gigabytes.
+      # v9: swapfile is back, but on the workspace volume and sized
+      # from measured free space (see "Add disk swap" step above) --
+      # runs #9/#11 proved -j1 + the runner's own swap alone do NOT
+      # hold the link phase (swap 74Mi -> 11Gi in ~3 min, runner dead).
+      # CCACHE_MAXSIZE 2G (was 5G) to save disk as well.
+      #
+      # v10 memory controls (the fix for the 25-min silent hang):
+      # -j1 caps ninja only; soong_build is a Go process with its own
+      # heap, so cap THAT: GOGC=50 halves the GC target, GOMAXPROCS=2
+      # limits parallel allocation. LLVM_PARALLEL_LINK_JOBS=1 is the
+      # AOSP-native switch for concurrent clang links (each lld peaks
+      # ~2G; two at once is what eats the box at 99%).
+      # The `m` invocations run inside a cgroup scope with MemoryMax=13G:
+      # an over-limit build is killed by the cgroup OOM killer alone and
+      # the runner survives to upload build.log. Self-tested; if scopes
+      # are unavailable it silently falls back to an unguarded run.
+      run: |
+        {
+          # set -e is inherited from the Actions shell; without this an OOM-
+          # killed m aborts the group before RC is read and the exit code
+          # (137/143) never reaches the log.
+          set +e
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export GOMAXPROCS=2
+          export GOGC=50
+          export LLVM_PARALLEL_LINK_JOBS=1
+          source build/envsetup.sh
+          export CCACHE_DIR=.ccache
+          export CCACHE_EXEC=$(command -v ccache)
+          export CCACHE_MAXSIZE=2G
+          export USE_CCACHE=1
+
+          # The dispatch input is the PARTITION NAME (vendor_boot); the make
+          # goal is a DIFFERENT string. build/make/core/main.mk:1316 has
+          #   .PHONY: vendorbootimage
+          #   vendorbootimage: $(INSTALLED_VENDOR_BOOTIMAGE_TARGET)
+          # so "vendor_boot" + "image" = vendor_bootimage matches NO rule, and
+          # kati only reports that AFTER the whole analysis (~15 min in).
+          # Resolve the goal from the synced tree instead of glueing strings,
+          # and fail in seconds (printing the real list) if nothing matches.
+          PARTITION="${{ github.event.inputs.BUILD_PARTITION }}"
+          [ -n "$PARTITION" ] || PARTITION=vendor_boot
+          case "$PARTITION" in
+            vendor_boot) CANDS="vendorbootimage vendor_bootimage" ;;
+            init_boot)   CANDS="initbootimage init_boot_image" ;;
+            boot)        CANDS="bootimage" ;;
+            recovery)    CANDS="recoveryimage" ;;
+            *)           CANDS="$PARTITION" ;;
+          esac
+          IMG_TARGET=""
+          for c in $CANDS; do
+            if grep -qE "^$c:" build/make/core/main.mk build/make/core/Makefile 2>/dev/null; then
+              IMG_TARGET="$c"
+              break
+            fi
+          done
+          if [ -z "$IMG_TARGET" ]; then
+            echo "::error title=Image target::no make rule for '$PARTITION' (tried: $CANDS)"
+            grep -nE '^[a-z_0-9]+bootimage:' build/make/core/main.mk || true
+            exit 1
+          fi
+          echo "::notice title=Image target::m $IMG_TARGET  (dispatch input: $PARTITION)"
+
+          lunch twrp_turner
+
+          # 13G cgroup cap on a 15GiB box: leaves ~2G for the runner,
+          # tee and this tip loop. Self-test with `true` -- a scope that
+          # cannot be created must never fail the build.
+          MEMGUARD=""
+          if command -v systemd-run >/dev/null 2>&1; then
+            if sudo systemd-run --scope -p MemoryMax=13G -p MemorySwapMax=40G \
+                 --quiet --wait true >/dev/null 2>&1; then
+              MEMGUARD="sudo systemd-run --scope -p MemoryMax=13G -p MemorySwapMax=40G --quiet --wait"
+              echo "::notice title=MemGuard::build capped at MemoryMax=13G via cgroup scope"
+            else
+              echo "::warning title=MemGuard::systemd scope unavailable, running unguarded"
+            fi
+          fi
+
+          # Capture the largest top-level consumers at phase boundaries;
+          # the 60s heartbeat uses df only (a recursive du every minute
+          # would itself add significant I/O during the link phase).
+          disk_snapshot() {
+            echo "::group::Disk snapshot: $1"
+            df -h / "$GITHUB_WORKSPACE" out
+            free -h
+            swapon --show
+            echo "Largest workspace directories:"
+            du -xhd1 "$GITHUB_WORKSPACE" 2>/dev/null | sort -h | tail -20 || true
+            echo "Largest build output directories:"
+            du -xhd1 out 2>/dev/null | sort -h | tail -20 || true
+            echo "::endgroup::"
+          }
+          disk_snapshot "before build"
+
+          (while true; do
+             echo "$(date +%T) Building TWRP..."
+             free -h | head -2
+             df -h / "$GITHUB_WORKSPACE" out
+             swapon --show
+             sleep 60
+           done) &
+          TIP_PID=$!
+          trap 'kill "$TIP_PID" 2>/dev/null || true; wait "$TIP_PID" 2>/dev/null || true' EXIT
+
+          $MEMGUARD m -j1 "$IMG_TARGET"
+          RC=$?
+          kill "$TIP_PID" 2>/dev/null || true
+          wait "$TIP_PID" 2>/dev/null || true
+          trap - EXIT
+          disk_snapshot "after main build"
+
+          # a cgroup OOM kill lands here as 137/143, not as a compile error
+          if [ "$RC" -ne 0 ]; then
+            echo "::warning title=Build exit code::$RC (137/143 = killed: cgroup OOM or SIGTERM)"
+            exit $RC
+          fi
+
+          # TWRP's relink lists lag behind vold (keystore2-V1 vs V4, ...) and copy the bootstrap
+          # servicemanager: fill the gaps in recovery/root, then repack if anything changed
+          fixed=$(python3 device/xiaomi/turner/.github/scripts/recovery_deps.py \
+            out/target/product/turner/recovery/root \
+            out/target/product/turner/system/lib64 out/target/product/turner/system_ext/lib64 \
+            out/target/product/turner/vendor/lib64 out/soong/.intermediates) ||
+            echo "::warning title=Recovery deps::some libraries were not found in the build output"
+          if [ -n "$fixed" ]; then
+            echo "::notice title=Added to recovery::$(echo "$fixed" | tr '\n' ';')"
+            rm -rf out/target/product/turner/vendor_boot.img out/target/product/turner/vendor_ramdisk*.img \
+              out/target/product/turner/obj/PACKAGING/vendor_boot_intermediates
+            disk_snapshot "before recovery repack"
+            $MEMGUARD m -j1 "$IMG_TARGET"
+            RC=$?
+            disk_snapshot "after recovery repack"
+            if [ "$RC" -ne 0 ]; then
+              echo "::warning title=Repack exit code::$RC"
+              exit $RC
+            fi
+          fi
+          exit $RC
+        } 2>&1 | tee build.log
+        cd out/target/product/turner
+        sha256sum vendor_boot.img | tee vendor_boot.img.sha256
+        echo "::notice title=vendor_boot.img::$(stat -c%s vendor_boot.img) bytes, sha256 $(cut -d' ' -f1 vendor_boot.img.sha256)"
+
+    - name: Upload build log (always)
+      # `if: failure()` steps never run when the runner process itself
+      # dies (run #10 had no build.log at all). Always persist it.
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log-${{ github.run_number }}
+        path: build.log
+        if-no-files-found: ignore
+        retention-days: 14
+
+    # Surface the compiler error as an annotation so it is readable without downloading logs
+    - name: Report build error
+      if: failure()
+      run: |
+        f="build.log"
+        [ -s "$f" ] || exit 0
+        msg=$(tail -c 3500 "$f" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+        echo "::error title=Build error::$msg"
+        u=$(grep -o 'undefined symbol: [^ ]*' "$f" | cut -d' ' -f3 | sort -u | c++filt | head -80 | tr '\n' ';' || true)
+        [ -z "$u" ] || echo "::error title=Undefined symbols::$u"
+        e=$(sed 's/\x1b\[[0-9;]*m//g' "$f" | grep -E ': (fatal )?error: ' | sort -u | head -40 | sed -e 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g' || true)
+        [ -z "$e" ] || echo "::error title=All compile errors::$e"
+        echo "::notice title=Disk at failure::$(df -h --output=target,avail / /mnt "$GITHUB_WORKSPACE" 2>/dev/null | tail -n +2 | tr -s ' ' | tr '\n' ' ')"
+        echo "::group::Largest directories at failure"
+        du -xhd1 "$GITHUB_WORKSPACE" 2>/dev/null | sort -h | tail -20 || true
+        du -xhd1 "$GITHUB_WORKSPACE/out" 2>/dev/null | sort -h | tail -20 || true
+        echo "::endgroup::"
+        echo "::notice title=Swap at failure::$(swapon --show | tr -s ' ' | tr '\n' ' ')"
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: UNTESTED-DO-NOT-FLASH-turner-vendor_boot-${{ github.run_number }}
+        path: |
+          out/target/product/turner/vendor_boot.img
+          out/target/product/turner/vendor_boot.img.sha256
