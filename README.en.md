@@ -4,7 +4,7 @@
 
 > **Project status: In development · Not fully built or device-tested · DO NOT FLASH**
 >
-> This repository stages a **YARP / TWRP 16.0 GUI2** Recovery port for Redmi K Pad (MT6991). The tree remains incomplete; source files, scripts and future CI artifacts are **not proof of a safe, flash-ready image**.
+> This repository stages a **YARP / TWRP 16.0 GUI2** Recovery port for Redmi K Pad (MT6991). The upstream device-tree baseline has been imported, but the YARP build and on-device tests remain incomplete; source files, scripts and CI artifacts are **not proof of a safe, flash-ready image**.
 
 ## Project goals
 
@@ -34,18 +34,20 @@ Bring the upstream **YARP GUI2/LVGL user interface and core recovery functions**
 
 | Item | Status |
 | --- | --- |
-| Core device-tree, libinit and BootControl sources | Partially imported; prebuilts and further dependencies are missing |
-| MT6991 init, fstab and vold patches | Partially imported; dependencies still need review |
+| Core device tree, libinit and BootControl | **Imported from locked upstream commit `1bb97be`** |
+| MT6991 init, fstab and vold patches | **File import completed; device-level dependencies remain unverified** |
 | Skyward fast/slow images | Layout and init comparison documents recorded; file dependencies not fully audited |
-| Prebuilt drivers, firmware and HALs | **Not fully imported** |
+| Baseline DTB, kernel modules, firmware and HALs | **Original source files imported (274 `.ko` modules); version matching against Skyward 3.0.306 still pending** |
 | YARP GUI2, tablet display and touch | Build and device tests pending |
 | Data decryption, ADB/MTP, backup/restore | Device tests pending |
 | Wi-Fi | Optional / deferred |
-| Full build, image validation and flashing tests | **Not completed** |
+| Static source checks | **PASS:** 274 modules, DTB hash, 247 / 266 load entries and dependency self-tests |
+| GitHub Actions build | Manual-only workflow configured; full YARP/Android build not yet run |
+| Hardware boot, decryption and flashing tests | **Not completed; not approved to flash** |
 
 ## Safety notice
 
-**This is not yet a complete buildable or flash-ready device tree.** Vendor Boot v4 header, DTB, PLATFORM/RECOVERY ramdisks, vendor modules, fstab, init and HAL dependencies must all be verified. The resulting image must fit the 64 MiB vendor_boot partition. A successful build alone is not sufficient to distribute an image to other users.
+**The original device-tree file set is now imported, but it has not passed a complete YARP build or hardware boot test; it is not flash-ready.** Vendor Boot v4 header, DTB, PLATFORM/RECOVERY ramdisks, vendor modules, fstab, init and HAL dependencies must all be verified. The resulting image must fit the 64 MiB vendor_boot partition. A successful build alone is not sufficient to distribute an image to other users.
 
 Before testing on hardware, prepare a verified stock image, a recovery/rollback method and the exact device/firmware details. Untested artifacts must never be labeled stable.
 
@@ -58,6 +60,9 @@ Before testing on hardware, prepare a verified stock image, a recovery/rollback 
 - [Skyward RECOVERY file inventory and differences](analysis/SKYWARD_PAYLOAD_INVENTORY.md)
 - [USB controller and MTP init difference audit](analysis/USB_CONTROLLER_MTP_AUDIT.md)
 - [KeyMint patch-level and AVB risk review](analysis/CRYPTO_PATCH_LEVEL_AVB_RISKS.md)
+- [Full baseline import audit](analysis/BASELINE_IMPORT_REPORT.json) · [successful import](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43518739112)
+- [Passing static check](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43519331308)
+- [Manual-only YARP build workflow](.github/workflows/build-twrp.yml) (untested image artifact opt-in)
 
 ## References and credits
 
