@@ -22,6 +22,24 @@ It also appends `androidboot.selinux=permissive` to `BOARD_VENDOR_CMDLINE`.
 
 These are imported verbatim from the original turner device tree; they are **not** proof that the values are correct for the installed HyperOS firmware or safe for data decryption.
 
+## New verified AVB evidence from both user-supplied images / 实际镜像 AVB 核查
+
+Both boot-tested Skyward 3.0.306 images have a valid-looking `AVBf` footer at the final 64 bytes, pointing to an `AVB0` vbmeta header:
+
+| Property | Fast and slow images |
+|---|---|
+| AVB footer version | 1.0 |
+| Original image size | 59,207,680 bytes |
+| Embedded vbmeta offset | 59,207,680 bytes |
+| Embedded vbmeta size | 512 bytes |
+| vbmeta algorithm type | **0 = NONE** |
+| vbmeta authentication block size | 0 bytes |
+| vbmeta rollback index / flags | 0 / 0 |
+
+**Difference from the current device tree:** `BoardConfig.mk` explicitly defines `BOARD_AVB_VENDOR_BOOT_ALGORITHM := SHA256_RSA4096` and `INTERNAL_AVB_VENDOR_BOOT_SIGNING_ARGS := --algorithm SHA256_RSA4096 ...` using an AOSP test key. The known-good Skyward images are **not signed with that algorithm**. This mismatch requires a build-output and boot-chain audit; it does **not** prove RSA4096 images cannot boot on an unlocked device.
+
+严格测试工具 `tools/check_reference_vendor_boot.py` now rejects an exported candidate if its vendor_boot PLATFORM/DTB, required cmdline, or AVB footer algorithm differs from the working Skyward baseline. This is a conservative reference check, **not a security certification**.
+
 ## Priority before an image is called safe / 发布前优先处理
 
 **P0 — patch level and OS version consistency:** The synthetic `2099-12-31` security patch and `99.87.36` platform version must be reconciled with real installed firmware properties and KeyMint behavior. Stock KeyMint/Gatekeeper/TEE dependencies and the corresponding Android 16 FBE unwrap flow must be confirmed. Do **not** attempt untested PIN/password decryption with a mismatched key environment on irreplaceable user data. Prefer a verified runtime patch-level strategy (the Xiaomi Pad 8 Pro tree has a `piano-setup.sh` runtime approach, but it is **not** a drop-in MT6991 solution).
