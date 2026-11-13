@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from sync_skyward_modules import align, apply_overlay, blob, compare, cpio_files, uncompress_legacy
+from tools.sync_skyward_modules import align, apply_overlay, blob, compare, cpio_files, uncompress_legacy
 
 
 class SkywardModuleSyncTests(unittest.TestCase):
