@@ -284,6 +284,11 @@ jobs:
       run: |
         set -euo pipefail
         python3 device-tree/tools/check_turner_inputs.py
+        if [ "${{ inputs.EXPORT_UNTESTED_IMAGE }}" = "true" ]; then
+          python3 device-tree/tools/check_skyward_module_set.py --tree device-tree
+        else
+          python3 device-tree/tools/check_skyward_module_set.py --tree device-tree --warn-only
+        fi
         test "${{ github.event.inputs.BUILD_PARTITION }}" = "vendor_boot"
         test "${{ github.event.inputs.TWRP_MANIFEST_BRANCH }}" = "twrp-16.0"
         test "${{ github.event.inputs.TWRP_MANIFEST_URL }}" = "https://github.com/TWRP-Test/platform_manifest_twrp_aosp"
@@ -580,6 +585,11 @@ jobs:
       run: |
         set -euo pipefail
         python3 device-tree/tools/verify_vendor_boot.py out/target/product/turner/vendor_boot.img
+        if [ "${{ inputs.EXPORT_UNTESTED_IMAGE }}" = "true" ]; then
+          python3 device-tree/tools/check_reference_vendor_boot.py out/target/product/turner/vendor_boot.img
+        else
+          echo "::warning title=No export::This diagnostic build is not a public flash image."
+        fi
         echo "::warning title=UNTESTED DO NOT FLASH::Structure validated; this is not a hardware-tested Recovery."
 
     - name: Upload build log (always)
