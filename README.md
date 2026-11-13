@@ -34,7 +34,7 @@
 
 | 项目 | 当前状态 |
 | --- | --- |
-| 核心设备树配置 | 部分已迁移 |
+| 核心设备树配置、libinit、BootControl | 已迁移部分源码，预编译文件与其他依赖待补齐 |
 | MT6991 初始化配置、fstab 与 vold 补丁 | 已迁移部分文件，仍需依赖审查 |
 | Skyward 快/慢启动镜像 | 已建立结构与 init 差异分析文档；文件依赖尚未全部核对 |
 | 预编译驱动、固件与 HAL | **尚未完整迁移** |
@@ -54,6 +54,9 @@
 - [Skyward Vendor Boot 结构分析](analysis/SKYWARD_VENDOR_BOOT_COMPARISON.md)
 - [Skyward 初始化对照](analysis/SKYWARD_INIT_AUDIT.md)
 - [只读 Vendor Boot 结构检查脚本](tools/verify_vendor_boot.py)
+- [已验证镜像分段提取工具](tools/extract_vendor_boot_reference.py)
+- [Skyward RECOVERY 文件清单与差异](analysis/SKYWARD_PAYLOAD_INVENTORY.md)
+- [USB 控制器与 MTP 初始化差异](analysis/USB_CONTROLLER_MTP_AUDIT.md)
 
 ## 参考与致谢
 
