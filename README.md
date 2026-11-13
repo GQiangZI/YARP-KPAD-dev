@@ -34,18 +34,20 @@
 
 | 项目 | 当前状态 |
 | --- | --- |
-| 核心设备树配置、libinit、BootControl | 已迁移部分源码，预编译文件与其他依赖待补齐 |
-| MT6991 初始化配置、fstab 与 vold 补丁 | 已迁移部分文件，仍需依赖审查 |
+| 原始设备树、libinit、BootControl | **已完整迁入原仓库基线（锁定提交 `1bb97be`）** |
+| MT6991 初始化配置、fstab 与 vold 补丁 | **文件已迁移，实机依赖仍需验证** |
 | Skyward 快/慢启动镜像 | 已建立结构与 init 差异分析文档；文件依赖尚未全部核对 |
-| 预编译驱动、固件与 HAL | **尚未完整迁移** |
+| 基线 DTB、内核模块、固件与 HAL | **源仓库文件已迁入（274 个 `.ko`）；需与 Skyward 3.0.306 镜像逐一对照版本** |
 | YARP GUI2 / 平板显示与触控 | 待编译、待实机验证 |
 | Data 解密、ADB、MTP、备份恢复 | 待实机验证 |
 | Wi-Fi | 可选，暂缓 |
-| 完整构建、产物检查与刷机测试 | **尚未完成** |
+| 静态检查 | **通过**：274 个模块、DTB 哈希、247 / 266 条加载引用以及依赖检查自测试 |
+| GitHub Actions 构建 | **已配置手动工作流**；尚未执行完整 Android/YARP 构建 |
+| 实机启动、解密和刷机测试 | **尚未完成，禁止宣称可刷** |
 
 ## 重要安全说明
 
-**当前仓库尚不是完整可编译、可刷写的设备树。** 尤其需要确保 Vendor Boot v4 的 header、DTB、PLATFORM/RECOVERY ramdisk、原厂模块、fstab、init 与 HAL 依赖正确，且镜像不超过 64 MiB 分区容量。不能只凭“构建成功”发布给其他用户刷机。
+**当前仓库已经迁入原设备树的主要源码和二进制，但尚未完成 YARP 整体编译与实机启动验证，不能认定可刷写。** 尤其需要确保 Vendor Boot v4 的 header、DTB、PLATFORM/RECOVERY ramdisk、原厂模块、fstab、init 与 HAL 依赖正确，且镜像不超过 64 MiB 分区容量。不能只凭“构建成功”发布给其他用户刷机。
 
 首次实机测试前应准备可核验的原厂镜像与恢复方案，并记录设备及固件版本；未经明确验证的产物只允许作为开发测试材料，不可标记为稳定版。
 
@@ -58,6 +60,9 @@
 - [Skyward RECOVERY 文件清单与差异](analysis/SKYWARD_PAYLOAD_INVENTORY.md)
 - [USB 控制器与 MTP 初始化差异](analysis/USB_CONTROLLER_MTP_AUDIT.md)
 - [KeyMint 解密版本与 AVB 安全风险](analysis/CRYPTO_PATCH_LEVEL_AVB_RISKS.md)
+- [原始设备树完整导入记录](analysis/BASELINE_IMPORT_REPORT.json) · [导入任务](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43518739112)
+- [静态检查结果](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43519331308)
+- [YARP 手动构建配置](.github/workflows/build-twrp.yml)（测试镜像默认不公开导出）
 
 ## 参考与致谢
 
