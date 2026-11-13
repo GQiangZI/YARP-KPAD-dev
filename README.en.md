@@ -57,6 +57,7 @@ Before testing on hardware, prepare a verified stock image, a recovery/rollback 
 - [Pinned-hash Skyward fragment extractor](tools/extract_vendor_boot_reference.py)
 - [Skyward RECOVERY file inventory and differences](analysis/SKYWARD_PAYLOAD_INVENTORY.md)
 - [USB controller and MTP init difference audit](analysis/USB_CONTROLLER_MTP_AUDIT.md)
+- [KeyMint patch-level and AVB risk review](analysis/CRYPTO_PATCH_LEVEL_AVB_RISKS.md)
 
 ## References and credits
 
