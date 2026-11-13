@@ -134,6 +134,11 @@ on:
         description: "Build partition"
         required: true
         default: "vendor_boot"
+      EXPORT_UNTESTED_IMAGE:
+        description: "Explicitly expose untested vendor_boot artifact (dangerous; default off)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -607,7 +612,9 @@ jobs:
         echo "::endgroup::"
         echo "::notice title=Swap at failure::$(swapon --show | tr -s ' ' | tr '\n' ' ')"
 
-    - uses: actions/upload-artifact@v4
+    - name: Upload test image only when explicitly opted in
+      if: success() && inputs.EXPORT_UNTESTED_IMAGE == true
+      uses: actions/upload-artifact@v4
       with:
         name: UNTESTED-DO-NOT-FLASH-turner-vendor_boot-${{ github.run_number }}
         path: |
