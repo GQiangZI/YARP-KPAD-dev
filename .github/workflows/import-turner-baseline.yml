@@ -1,0 +1,68 @@
+name: Import pinned turner baseline (SOURCE ONLY)
+
+# This workflow copies only missing files from the original device tree.
+# It does NOT build a recovery, flash a device, or publish an image.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/import-turner-baseline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: import-turner-baseline
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.repository == 'GQiangZI/YARP-KPAD-dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout development repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: work
+          fetch-depth: 1
+
+      - name: Checkout pinned original turner device tree
+        uses: actions/checkout@v4
+        with:
+          repository: GQiangZI/twrp_device_xiaomi_turner
+          ref: 1bb97be36ea89362664a87dfb7a77acca4e3eb9b
+          path: upstream
+          persist-credentials: false
+
+      - name: Copy and verify all missing source/binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 work/tools/import_turner_baseline.py \
+            upstream work \
+            --commit 1bb97be36ea89362664a87dfb7a77acca4e3eb9b \
+            --report work/analysis/BASELINE_IMPORT_REPORT.json
+          test -f work/prebuilt/dtb
+          test -f work/recovery/root/lib/modules/modules.load
+          test -f work/recovery/root/vendor/bin/hw/android.hardware.gatekeeper-service.mitee
+          test -f work/recovery/root/vendor/bin/hw/android.hardware.security.keymint@3.0-service.mitee
+          echo "::notice title=Source-only sync::No recovery build or release is performed."
+
+      - name: Commit imported missing files (no build)
+        working-directory: work
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No changes to import."
+          else
+            git commit -m "Import pinned turner baseline modules, DTB and vendor dependencies [skip ci]"
+            git push origin HEAD:main
+          fi
