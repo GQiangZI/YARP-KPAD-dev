@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/check-turner-inputs.yml"
+      - "tools/sync_skyward_modules.py"
+      - "tools/test_sync_skyward_modules.py"
+      - "tools/check_turner_inputs.py"
   workflow_dispatch:
 
 permissions:
@@ -28,6 +31,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/recovery_deps_test.py
+
+      - name: Test Skyward driver overlay safety guards
+        run: |
+          set -euo pipefail
+          python3 -m unittest -v tools/test_sync_skyward_modules.py
 
       - name: Report safety boundary
         if: always()
