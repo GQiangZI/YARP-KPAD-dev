@@ -1,0 +1,18 @@
+{
+  "device": "Redmi K Pad / turner / MT6991",
+  "source_repository": "GQiangZI/twrp_device_xiaomi_turner",
+  "source_commit": "1bb97be36ea89362664a87dfb7a77acca4e3eb9b",
+  "source_tracked_files": 406,
+  "new_files_copied": 353,
+  "preserved_edited_files": [
+    "README.en.md",
+    "README.md"
+  ],
+  "excluded_legacy_workflows": [
+    ".github/workflows/build-twrp.yml",
+    ".github/workflows/extract-stock.yml"
+  ],
+  "verified_kernel_modules": 274,
+  "dtb_sha256": "4f985cad82176ea746ffef6aa960269ef0aec410f294bc157bd766ad74f49bc0",
+  "status": "SOURCE_IMPORT_ONLY_NOT_BUILT_NOT_FLASH_TESTED"
+}
