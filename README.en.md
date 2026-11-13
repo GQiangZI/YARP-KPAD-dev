@@ -37,11 +37,11 @@ Bring the upstream **YARP GUI2/LVGL user interface and core recovery functions**
 | Core device tree, libinit and BootControl | **Imported from locked upstream commit `1bb97be`** |
 | MT6991 init, fstab and vold patches | **File import completed; device-level dependencies remain unverified** |
 | Skyward fast/slow images | Layout and init comparison documents recorded; file dependencies not fully audited |
-| Baseline DTB, kernel modules, firmware and HALs | **Original source files imported (274 `.ko` modules); version matching against Skyward 3.0.306 still pending** |
+| Baseline DTB, modules, firmware and HALs | **Original 274 `.ko` files imported; all 274 differ from the boot-tested Skyward 3.0.306 set and have NOT yet been replaced** |
 | YARP GUI2, tablet display and touch | Build and device tests pending |
 | Data decryption, ADB/MTP, backup/restore | Device tests pending |
 | Wi-Fi | Optional / deferred |
-| Static source checks | **PASS:** 274 modules, DTB hash, 247 / 266 load entries and dependency self-tests |
+| Static source checks | **File presence and sync-tool tests PASS**; module version fingerprint explicitly reports mismatch |
 | GitHub Actions build | Manual-only workflow configured; full YARP/Android build not yet run |
 | Hardware boot, decryption and flashing tests | **Not completed; not approved to flash** |
 
@@ -60,8 +60,10 @@ Before testing on hardware, prepare a verified stock image, a recovery/rollback 
 - [Skyward RECOVERY file inventory and differences](analysis/SKYWARD_PAYLOAD_INVENTORY.md)
 - [USB controller and MTP init difference audit](analysis/USB_CONTROLLER_MTP_AUDIT.md)
 - [KeyMint patch-level and AVB risk review](analysis/CRYPTO_PATCH_LEVEL_AVB_RISKS.md)
+- [Skyward full 274-module mismatch report](analysis/SKYWARD_PLATFORM_MODULE_AUDIT.md)
+- [Read-only-by-default Skyward module sync](tools/sync_skyward_modules.py) · [Module version fingerprint check](tools/check_skyward_module_set.py)
 - [Full baseline import audit](analysis/BASELINE_IMPORT_REPORT.json) · [successful import](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43518739112)
-- [Passing static check](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43519331308)
+- [Latest static and module sync test run](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43528757341)
 - [Manual-only YARP build workflow](.github/workflows/build-twrp.yml) (untested image artifact opt-in)
 
 ## References and credits
