@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <!-- Local manifest for turner TWRP builds on a Linux runner.
+       twrp-default.xml already includes remove-minimal.xml (605 removals);
+       these are the surviving prebuilts/* that a recovery ramdisk never uses.
+       If a build complains about a missing prebuilt, delete that line.
+       2026-11-08: 17 entries were deleted because remove-minimal.xml
+       already removes them, so repo FAILS on a duplicate <remove-project>
+       ("remove-project element specifies non-existent project", run #15).
+       Every remaining entry was verified against the live twrp-16.0
+       manifest (default.xml + twrp-default.xml) on 2026-11-08. -->
+  <!-- macOS / Windows cross toolchains -->
+  <remove-project name="platform/prebuilts/bazel/darwin-x86_64" />
+  <!-- ABI dumps + old VNDK snapshots -->
+  <remove-project name="platform/prebuilts/abi-dumps/ndk" />
+  <remove-project name="platform/prebuilts/abi-dumps/platform" />
+  <remove-project name="platform/prebuilts/abi-dumps/vndk" />
+  <remove-project name="platform/prebuilts/vndk/v30" />
+  <remove-project name="platform/prebuilts/vndk/v31" />
+  <remove-project name="platform/prebuilts/vndk/v32" />
+  <remove-project name="platform/prebuilts/vndk/v33" />
+  <remove-project name="platform/prebuilts/vndk/v34" />
+  <!-- mainline module SDKs -->
+  <remove-project name="platform/prebuilts/module_sdk/AdServices" />
+  <remove-project name="platform/prebuilts/module_sdk/AppSearch" />
+  <remove-project name="platform/prebuilts/module_sdk/Bluetooth" />
+  <remove-project name="platform/prebuilts/module_sdk/ConfigInfrastructure" />
+  <remove-project name="platform/prebuilts/module_sdk/CrashRecovery" />
+  <remove-project name="platform/prebuilts/module_sdk/DeviceLock" />
+  <remove-project name="platform/prebuilts/module_sdk/HealthFitness" />
+  <remove-project name="platform/prebuilts/module_sdk/OnDevicePersonalization" />
+  <remove-project name="platform/prebuilts/module_sdk/Profiling" />
+  <remove-project name="platform/prebuilts/module_sdk/RemoteKeyProvisioning" />
+  <remove-project name="platform/prebuilts/module_sdk/Uwb" />
+  <!-- NEVER remove these (needed to build recovery):
+       prebuilts/clang/host/linux-x86, build-tools, clang-tools, rust,
+       go/linux-x86, bazel/linux-x86_64, jdk/jdk21, misc -->
+  <!-- OPTIONAL, higher risk (uncomment only if disk is still tight):
+  <remove-project name="platform/prebuilts/ndk" />
+  <remove-project name="platform/prebuilts/sdk" />
+  <remove-project name="platform/prebuilts/gradle-plugin" />
+  -->
+</manifest>
