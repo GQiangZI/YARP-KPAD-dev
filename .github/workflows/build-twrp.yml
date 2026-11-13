@@ -571,6 +571,12 @@ jobs:
         sha256sum vendor_boot.img | tee vendor_boot.img.sha256
         echo "::notice title=vendor_boot.img::$(stat -c%s vendor_boot.img) bytes, sha256 $(cut -d' ' -f1 vendor_boot.img.sha256)"
 
+    - name: Verify output vendor_boot v4 layout before uploading an untested artifact
+      run: |
+        set -euo pipefail
+        python3 device-tree/tools/verify_vendor_boot.py out/target/product/turner/vendor_boot.img
+        echo "::warning title=UNTESTED DO NOT FLASH::Structure validated; this is not a hardware-tested Recovery."
+
     - name: Upload build log (always)
       # `if: failure()` steps never run when the runner process itself
       # dies (run #10 had no build.log at all). Always persist it.
