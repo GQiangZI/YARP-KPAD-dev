@@ -57,6 +57,7 @@
 - [已验证镜像分段提取工具](tools/extract_vendor_boot_reference.py)
 - [Skyward RECOVERY 文件清单与差异](analysis/SKYWARD_PAYLOAD_INVENTORY.md)
 - [USB 控制器与 MTP 初始化差异](analysis/USB_CONTROLLER_MTP_AUDIT.md)
+- [KeyMint 解密版本与 AVB 安全风险](analysis/CRYPTO_PATCH_LEVEL_AVB_RISKS.md)
 
 ## 参考与致谢
 
