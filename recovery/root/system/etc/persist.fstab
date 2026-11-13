@@ -1,0 +1,5 @@
+# turner / MT6991 persist — mounted --early by init.recovery.mt6991.rc, then bound to /persist
+# source: stock first-stage fstab.mt6991, MINUS the "formattable" flag: persist holds
+# sensor calibration / fingerprint / haptics data and must never be auto-formatted in recovery.
+# <src>                        <mnt_point>          <type>  <mnt_flags and options>                                      <fs_mgr_flags>
+/dev/block/by-name/persist     /mnt/vendor/persist  ext4    noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc  wait,check
