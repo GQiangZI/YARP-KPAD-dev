@@ -1,0 +1,36 @@
+name: Static turner source preflight (NO BUILD)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/check-turner-inputs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.repository == 'GQiangZI/YARP-KPAD-dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout full turner development tree
+        uses: actions/checkout@v4
+
+      - name: Confirm source and boot dependencies
+        run: |
+          set -euo pipefail
+          python3 tools/check_turner_inputs.py
+
+      - name: Run original recovery dependency tool's self-tests
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/recovery_deps_test.py
+
+      - name: Report safety boundary
+        if: always()
+        run: |
+          echo '### Static check only — not a flashable Recovery' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No YARP image was compiled, installed, flashed or released.' >> "$GITHUB_STEP_SUMMARY"
