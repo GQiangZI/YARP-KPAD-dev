@@ -1,5 +1,8 @@
 # YARP GUI2 feature parity and Wi-Fi policy for Redmi K Pad (turner)
 
+[简体中文](YARP_GUI2_FEATURE_PARITY.zh-CN.md) | [**English**](YARP_GUI2_FEATURE_PARITY.md)
+
+
 **Status: specification / acceptance criteria; implementation is not yet boot-tested.**
 
 ## Non-negotiable goal
