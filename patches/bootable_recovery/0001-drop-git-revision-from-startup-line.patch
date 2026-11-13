@@ -1,0 +1,19 @@
+Drop the source revision from the startup line (16.0 version).
+
+The TWRP screen showed a bootable/recovery commit hash plus "-dirty"
+after the version. Same cosmetic fix as the 14.1 patch, re-based on the
+16.0 startup line, which uses TWFunc::GetTwrpVersion() instead of
+TW_VERSION_STR. Applies to TWRP-Test android_bootable_recovery twrp-16.0.
+
+diff --git a/twrp.cpp b/twrp.cpp
+--- a/twrp.cpp
++++ b/twrp.cpp
+@@ -604,7 +604,7 @@
+ #endif
+ 
+   const time_t startup_time = time(nullptr);
+-  printf("Starting TWRP %s-%s on %s (pid %d)\n", TWFunc::GetTwrpVersion().c_str(), TW_GIT_REVISION,
++  printf("Starting TWRP %s on %s (pid %d)\n", TWFunc::GetTwrpVersion().c_str(),
+          ctime(&startup_time), getpid());
+ 
+ 	// Load default values to set DataManager constants and handle ifdefs
