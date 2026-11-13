@@ -1,0 +1,98 @@
+Unlock with the AIDL Gatekeeper and other protectors (16.0 version).
+
+On turner (HyperOS 3, Android 16) TWRP failed every pattern: the active
+protector uses Weaver (android.hardware.weaver-service.nxp on the NXP eSE,
+reached through OMAPI, which recovery cannot run), and the phone also keeps
+a Gatekeeper protector for the same synthetic password.
+
+What changed vs the 14.1 patch: the AIDL Gatekeeper plumbing is already
+upstream in twrp-16.0 (Gatekeeper_Verify tries AIDL first, then HIDL, and
+android.hardware.gatekeeper-V1-ndk is already linked), so this patch only
+carries the turner-specific logic:
+- unwrapSyntheticPasswordBlob used the ACTIVE sp-handle for the keystore
+  alias; use the handle of the protector we are actually trying.
+- Decrypt_User_Synth_Pass takes an optional handle_str so the fallback
+  below can retry with a different protector.
+- Decrypt_User_Other_Protectors tries every protector that has Gatekeeper
+  data (.secdis) when the active one fails.
+Applies to TWRP-Test android_system_vold twrp-16.0.
+
+diff --git a/Decrypt.cpp b/Decrypt.cpp
+--- a/Decrypt.cpp
++++ b/Decrypt.cpp
+@@ -570,9 +570,11 @@
+     ::keystore::hidl_vec<uint8_t> iv_hidlvec;
+     iv_hidlvec.setToExternal(byteptr, 12);  // The IV is the first 12 bytes of the spblob
+ 
++    // Decrypt the protector we are actually trying (handle_str), not the active
++    // sp-handle: a Weaver protector can be active while we fall back to this
++    // Gatekeeper one (Decrypt_User_Other_Protectors)
+     KeystoreInfo keystore_info;
+-    std::string handle = keystore_info.getHandle(user_id);
+-    std::string keystore_alias = keystore_info.getAlias(handle);
++    std::string keystore_alias = keystore_info.getAlias(handle_str);
+     unsigned char* cipher_text = byteptr + 12;  // The cipher text comes immediately after the IV
+     ::keystore::hidl_vec<uint8_t> cipher_text_hidlvec;
+ 
+@@ -855,7 +857,7 @@
+ }
+ 
+ 
+-bool Decrypt_User_Synth_Pass(const userid_t user_id, const std::string& Password) {
++bool Decrypt_User_Synth_Pass(const userid_t user_id, const std::string& Password, std::string handle_str = "") {
+     printf("Attempting to unlock the user's LSKF-based SP protector\n");
+     bool retval = false;
+     void* weaver_key = nullptr;
+@@ -871,7 +873,8 @@
+     std::string spblob_path = spblob_path_char;
+ 
+     KeystoreInfo keystore_info;
+-    std::string handle_str = keystore_info.getHandle(user_id);
++    if (handle_str.empty())
++        handle_str = keystore_info.getHandle(user_id);
+     // The synthetic password key is looked up by alias, so keystore2 needs the
+     // installed system's database before any of the calls below.
+     if (!android::keystore::syncKeystoreDb()) {
+@@ -1038,6 +1041,33 @@
+     return 0;
+ }
+ 
++// HyperOS keeps the LSKF in a Weaver protector backed by the NXP eSE, reached through OMAPI,
++// which recovery cannot run. It also keeps a Gatekeeper protector for the same synthetic password,
++// so try every protector that has Gatekeeper data (.secdis) when the active one fails.
++static bool Decrypt_User_Other_Protectors(const userid_t user_id, const std::string& Password) {
++    const std::string dir = "/data/system_de/" + std::to_string(user_id) + "/spblob/";
++    DIR* d = opendir(dir.c_str());
++    if (!d)
++        return false;
++    const std::string suffix = ".secdis";
++    bool ret = false;
++    while (dirent* de = readdir(d)) {
++        std::string id = de->d_name;
++        if (id.size() <= suffix.size() || id.compare(id.size() - suffix.size(), suffix.size(), suffix) != 0)
++            continue;
++        id.resize(id.size() - suffix.size());
++        // file names are %016x, keystore aliases use %x
++        id.erase(0, std::min(id.find_first_not_of('0'), id.size() - 1));
++        printf("Trying protector '%s'\n", id.c_str());
++        if (Decrypt_User_Synth_Pass(user_id, Password, id)) {
++            ret = true;
++            break;
++        }
++    }
++    closedir(d);
++    return ret;
++}
++
+ extern "C" bool Decrypt_User(const userid_t user_id, const std::string& Password) {
+     printf("Attempting to decrypt user\n");
+     int ret = -1;
+@@ -1062,7 +1092,7 @@
+     }
+     if (stat("/data/system_de/0/spblob", &st) == 0) {
+         printf("Using synthetic password method\n");
+-        return Decrypt_User_Synth_Pass(user_id, Password);
++        return Decrypt_User_Synth_Pass(user_id, Password) || Decrypt_User_Other_Protectors(user_id, Password);
+     }
+     if (stat(filename.c_str(), &st) != 0) {
+         printf("error stating key file: %s\n", strerror(errno));
