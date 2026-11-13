@@ -8,6 +8,8 @@ on:
       - "tools/sync_skyward_modules.py"
       - "tools/test_sync_skyward_modules.py"
       - "tools/check_turner_inputs.py"
+      - "tools/check_skyward_module_set.py"
+      - "tools/check_reference_vendor_boot.py"
   workflow_dispatch:
 
 permissions:
@@ -31,6 +33,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/recovery_deps_test.py
+
+      - name: Detect known-good Skyward driver version mismatch without permitting a release
+        run: |
+          set -euo pipefail
+          python3 tools/check_skyward_module_set.py --warn-only
 
       - name: Test Skyward driver overlay safety guards
         run: |
