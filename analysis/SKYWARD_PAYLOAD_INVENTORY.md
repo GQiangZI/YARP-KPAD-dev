@@ -31,11 +31,19 @@ The fast `device.toml` explicitly launches `/vendor/bin/vndservicemanager`; the 
 | Extracted file | SHA-256 | Equivalent original turner tree |
 | --- | --- | --- |
 | `init.recovery.mt6991.rc` | `a8df21f25a7bd58770f61f4f63c859dcc3f545caff483328295db56e1f1c11a2` | Differs; kept as noninstalled reference |
-| `system/etc/recovery.fstab` | `13f5bd1abf777a293a7bc74bb14e41757bced12c4fb2d130cf7b0829d35ab6a9` | Matches `recovery/root/system/etc/recovery.fstab` and `recovery/root/first_stage_ramdisk/fstab.mt6991` by Git blob SHA-1 `496cfca863e03c53e2c82b280686044d7ad37cc5` |
+| `system/etc/recovery.fstab` | `13f5bd1abf777a293a7bc74bb14e41757bced12c4fb2d130cf7b0829d35ab6a9` | Matches **only** `recovery/root/first_stage_ramdisk/fstab.mt6991` by Git blob SHA-1 `496cfca863e03c53e2c82b280686044d7ad37cc5`; the shorter `recovery/root/system/etc/recovery.fstab` has a **different** blob SHA-1 `bf298250635a1bc8ba23ce86e2fe3ce64b32bd57` and must not be considered identical |
 | `first_stage_ramdisk/fstab.emmc` | `912a4a651d2197883e46cf9a7afc3035261c1e7a8263709f91d0146ddfd68bfb` | Matches `recovery/root/first_stage_ramdisk/fstab.emmc` by Git blob SHA-1 `5b416f861fa4103c5bd9d576ba55767d1606524b` |
 | `system/etc/init/skyward-mtp.rc` | `194135bdc994f399a348eb27e208ec197b016a357323da2d36e8d5f1e952c8a5` | Skyward-only reference; **not enabled in YARP** |
 
 Platform ramdisk, DTB and per-fragment hashes are recorded in [vendor_boot comparison](SKYWARD_VENDOR_BOOT_COMPARISON.md). An offline, pinned-hash exporter lives at [`tools/extract_vendor_boot_reference.py`](../tools/extract_vendor_boot_reference.py). Both known images were processed successfully and their outputs matched expected hashes.
+
+## Additional PLATFORM finding / PLATFORM 驱动核对
+
+The PLATFORM ramdisk in **both** Skyward variants contains **274 `.ko` kernel modules**, five `modules.*` metadata files, plus init, system tools and libraries. The five module metadata files match the imported turner source tree byte-for-byte, but multiple kernel-module binaries do **not**. A focused Git-blob-SHA comparison against the current public development branch found **18 mismatches among 18 security/display/USB/power-critical samples**. The repository is not yet guaranteed to contain the exact module bytes used by the two working Skyward images.
+
+快、慢版 PLATFORM 均含 274 个 `.ko`，模块依赖清单一致；但抽查的 18 个关键模块与仓库中现有二进制全部不同。**静态检查通过只证明文件和依赖清单齐全，不能证明驱动版本正确。** 不得将 3.0.306 与其他版本 `.ko` 混用后宣称安全启动。
+
+See [Skyward platform module audit / 内核模块差异报告](SKYWARD_PLATFORM_MODULE_AUDIT.md).
 
 ## Integration rules / 整合要求
 
