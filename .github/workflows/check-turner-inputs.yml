@@ -36,10 +36,10 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/recovery_deps_test.py
 
-      - name: Detect known-good Skyward driver version mismatch without permitting a release
+      - name: Require exact complete Skyward 306 driver version
         run: |
           set -euo pipefail
-          python3 tools/check_skyward_module_set.py --warn-only
+          python3 tools/check_skyward_module_set.py
 
       - name: Test Skyward driver overlay safety guards
         run: |
