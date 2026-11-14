@@ -37,11 +37,11 @@ Bring the upstream **YARP GUI2/LVGL user interface and core recovery functions**
 | Core device tree, libinit and BootControl | **Imported from locked upstream commit `1bb97be`** |
 | MT6991 init, fstab and vold patches | **File import completed; device-level dependencies remain unverified** |
 | Skyward reference (owner-reported on-device test, 2026-11-14) | **Recovery boots, display and touch work; Data decryption fails. Exact tested variant, installed firmware and failure logs remain unconfirmed** |
-| Baseline DTB, modules, firmware and HALs | **274 Skyward driver files extracted and verified; source-only import automation ready, awaiting binary ZIP upload to GitHub** |
+| Baseline DTB, modules, firmware and HALs | **All 274 Skyward 3.0.306 driver binaries integrated and verified with five matching metadata files (`94f62c0`); touch HAL and crypto runtime still pending** |
 | YARP GUI2, tablet display and touch | Build and device tests pending |
 | Data decryption, ADB/MTP, backup/restore | Device tests pending |
 | Wi-Fi | Optional / deferred |
-| Static source checks | **File presence and sync-tool tests PASS**; module version fingerprint explicitly reports mismatch |
+| Static source checks | **File presence, sync-tool tests and full driver fingerprint PASS** |
 | GitHub Actions build | Manual-only workflow configured; full YARP/Android build not yet run |
 | Hardware boot, decryption and flashing tests | **Not completed; not approved to flash** |
 
