@@ -284,11 +284,8 @@ jobs:
       run: |
         set -euo pipefail
         python3 device-tree/tools/check_turner_inputs.py
-        if [ "${{ inputs.EXPORT_UNTESTED_IMAGE }}" = "true" ]; then
-          python3 device-tree/tools/check_skyward_module_set.py --tree device-tree
-        else
-          python3 device-tree/tools/check_skyward_module_set.py --tree device-tree --warn-only
-        fi
+        # Driver import has completed; never compile against a mixed/mismatched module set.
+        python3 device-tree/tools/check_skyward_module_set.py --tree device-tree
         test "${{ github.event.inputs.BUILD_PARTITION }}" = "vendor_boot"
         test "${{ github.event.inputs.TWRP_MANIFEST_BRANCH }}" = "twrp-16.0"
         test "${{ github.event.inputs.TWRP_MANIFEST_URL }}" = "https://github.com/TWRP-Test/platform_manifest_twrp_aosp"
@@ -560,8 +557,11 @@ jobs:
           fixed=$(python3 device/xiaomi/turner/.github/scripts/recovery_deps.py \
             out/target/product/turner/recovery/root \
             out/target/product/turner/system/lib64 out/target/product/turner/system_ext/lib64 \
-            out/target/product/turner/vendor/lib64 out/soong/.intermediates) ||
-            echo "::warning title=Recovery deps::some libraries were not found in the build output"
+            out/target/product/turner/vendor/lib64 out/soong/.intermediates) || {
+            echo "::error title=Recovery deps::unresolved ELF dependencies; refusing to package a broken image"
+            printf '%s\n' "$fixed"
+            exit 1
+          }
           if [ -n "$fixed" ]; then
             echo "::notice title=Added to recovery::$(echo "$fixed" | tr '\n' ';')"
             rm -rf out/target/product/turner/vendor_boot.img out/target/product/turner/vendor_ramdisk*.img \
