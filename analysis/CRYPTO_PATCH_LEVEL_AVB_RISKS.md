@@ -2,6 +2,8 @@
 
 > **Static audit only. No change to active build settings yet.**
 >
+> **Owner-reported device result (2026-11-14): Skyward enters Recovery and display/touch work, but Data decryption fails.** Treat it only as a boot/display/input reference. Exact tested variant, installed firmware and crypto failure logs are not yet established. Do not attribute the failure to MiTEE, Weaver, patch levels or any other component without diagnostic evidence. / 用户实测：Skyward 可启动，显示触控正常，但 Data 解密失败；具体失败阶段和原因尚未确认。
+>
 > **仅静态风险审查：尚未更改实际构建参数，也不声称发现的问题已造成实际设备故障。**
 
 ## Observed values / 已确认的源码配置
