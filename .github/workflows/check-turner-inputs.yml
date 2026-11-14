@@ -12,6 +12,9 @@ on:
       - "tools/check_turner_inputs.py"
       - "tools/check_skyward_module_set.py"
       - "tools/check_reference_vendor_boot.py"
+      - "BoardConfig.mk"
+      - "recovery/root/init.recovery.mt6991.rc"
+      - "recovery/root/system/bin/*.sh"
   workflow_dispatch:
 
 permissions:
@@ -50,6 +53,17 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest -v tools/test_apply_verified_skyward_zip.py
+
+      - name: Check touch lifecycle scripts and image audit syntax
+        run: |
+          set -euo pipefail
+          for script in cache-device-runtime restore-device-runtime turner-touch-prepare; do
+            sh -n "recovery/root/system/bin/$script.sh"
+          done
+          python3 -m py_compile tools/check_reference_vendor_boot.py
+          grep -F 'on property:twrp.modules.loaded=true && property:twrp.storage.ready=1' recovery/root/init.recovery.mt6991.rc
+          grep -F 'service turner-touch-hal /system/bin/linker64 /tmp/turner-touch/live/bin/touchfeature' recovery/root/init.recovery.mt6991.rc
+          echo 'Shell and integration syntax only; service and input events need hardware tests.'
 
       - name: Report safety boundary
         if: always()
