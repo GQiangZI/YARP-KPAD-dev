@@ -18,8 +18,8 @@ The Xiaomi Pad 8 Pro (`piano`) YARP tree provides a reference for `landscape_hdp
 | Area | Acceptance criteria | Current evidence |
 |---|---|---|
 | Boot and rollback | Vendor Boot v4; 2 LZ4 ramdisk fragments; stock-compatible DTB, size and first-stage behavior; normal system boot and rollback | Skyward reference boots; YARP not tested |
-| Display/input | GUI2 renders fully with correct orientation, text scaling, touch hit targets, scrolling, buttons and screenshot | YARP not tested |
-| File encryption | Unlock PIN/pattern/password, mount decrypted /data and /metadata without destructive writes | YARP not tested |
+| Display/input | GUI2 renders fully with correct orientation, text scaling, touch hit targets, scrolling, buttons and screenshot | Skyward display/touch work (owner report); YARP not tested |
+| File encryption | Unlock PIN/pattern/password, mount decrypted /data and /metadata without destructive writes | Skyward failed (owner report); YARP not tested |
 | Install/sideload | ZIP installation, ADB sideload, safe failure handling | YARP not tested |
 | Backup/restore | A/B, dynamic partitions, backup listing, restore and file integrity | YARP not tested |
 | Wipe/format | Safe partition selection; no accidental destructive action | YARP not tested |
