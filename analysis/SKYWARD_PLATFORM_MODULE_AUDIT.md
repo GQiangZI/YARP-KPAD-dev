@@ -54,7 +54,7 @@ git diff --stat
 
 The tool accepts **only two pinned, previously verified image SHA-256 hashes**. It verifies PLATFORM ramdisk hash, parses legacy LZ4 and CPIO, requires exactly 274 matching filenames, and rejects unequal `modules.*` metadata. It never makes a flashable image; `--apply` alters local driver files only.
 
-**Important:** the current GitHub connector cannot transfer 40+ MiB of extracted binary modules from this session directly into repository blobs. The public repository's present driver bytes therefore **remain the imported original tree**, not the Skyward replacements. The sync tool can perform the full replacement where the supplied image and a writable git checkout are both available; that operation has **not yet been executed on the remote GitHub repository**.
+**Remote integration update (2026-11-14):** The extracted 274-module + five-metadata ZIP was verified locally (SHA-256 `28ca760a4b6cc867c04493b6b29e0104b1ee1fd820a264b6c3169c336d811fad`, 15.60 MiB). The [whole-set ZIP importer](../tools/apply_verified_skyward_zip.py) and [one-shot automatic source-only workflow](../.github/workflows/integrate-skyward-modules.yml) are committed and covered by five passing CI tests. The GitHub connector still cannot directly upload local binary attachments. Thus **the actual remote `.ko` files have not been replaced** until that verified ZIP is uploaded once at `references/skyward/Skyward_turner_OS3.0.306_modules_reference.zip`. See [integration instructions / 整合说明](../docs/SKYWARD_DRIVER_INTEGRATION.md). The workflow will verify hashes and commit all 274 files as a unit; no image build or release is triggered.
 
 ## Recommended order / 下一步
 
