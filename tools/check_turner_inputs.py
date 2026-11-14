@@ -62,6 +62,16 @@ def main():
     ):
         if token not in board:
             fail("required vendor_boot setting missing: " + token)
+    # Upstream twrp_flags.go only emits the vendor module loader macros
+    # when TW_LOAD_VENDOR_MODULES is nonempty; the boot flag alone does not.
+    match = re.search(r'^\s*TW_LOAD_VENDOR_MODULES\s*:?=\s*"?([^"\n#]+)"?\s*$', board, re.M)
+    if not match or "nt36536e_touch_turner.ko" not in match.group(1).split():
+        fail("YARP vendor module loader must request the turner NT36536E driver")
+    if "TW_LOAD_VENDOR_BOOT_MODULES := true" not in board:
+        fail("missing vendor_boot module loader setting")
+    if "TARGET_SCREEN_HEIGHT := 3008" not in board or "TARGET_SCREEN_WIDTH := 1880" not in board:
+        fail("panel native geometry differs from turner reference")
+    print("PASS: NT36536E module request and native panel geometry (runtime untested)")
     if re.search(r"^\s*TW_INCLUDE_WIFI\s*:?=\s*true", board, re.M):
         fail("optional Wi-Fi must not be enabled before MT6991 service validation")
     print("PASS: DTB size and SHA-256 match the working Skyward image")
