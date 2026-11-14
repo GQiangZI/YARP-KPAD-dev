@@ -1,0 +1,140 @@
+# hybrid-services.rc — v2.4: library order REVERTED to the a7 arrangement
+# (ramdisk/SDK35 libbinder_ndk first, matching the stock-recovery
+# servicemanager's generation). The v2.3 system-first flip fixed linking
+# but keymint/gatekeeper then aborted at AIDL registration. The flip's
+# one hard requirement — the SDK37-only symbol
+# AIBinder_Class_setTransactionCodeToFunctionNameMap needed by the
+# system copy of rkp-V3-ndk.so — is now provided by the no-op stub
+# /system/etc/hybrid/libbinder_trace_stub.so (verified by a full symbol
+# census of the system-side libraries, 2026-11-14). — YARP x Skyward hybrid recovery, Redmi K Pad (turner).
+# DRAFT (stage 2). Merge target: system/etc/init/hybrid-services.rc in F1.
+#
+# Service definitions for the installed-system TEE chain and the Xiaomi
+# touch HAL. Every block is copied from the a7 (Skyward-for-turner)
+# device.toml — the orchestration proven on this device — with the toml's
+# per-service `libraries` list reproduced verbatim as LD_LIBRARY_PATH.
+# The binaries are the *installed system's* (/vendor/bin/...,
+# /odm/bin/hw/...), started by turner-setup.sh only after it has mounted
+# the installed partitions, aligned the KeyMint patch-level properties
+# with the installed ROM, and staged the device nodes.
+#
+# Isolation rules honoured here:
+# - All four services are `disabled`: class_start (hw/init.rc runs
+#   `class_start default` + `class_start hal` on boot) must never start
+#   them out of order; turner-setup.sh starts them explicitly.
+# - This file deliberately does NOT redefine `service recovery`: the
+#   TWRP service keeps the v5iso isolation (setenv LD_LIBRARY_PATH
+#   /system/lib64/twrp16:/system/lib64 in the recovery block of
+#   hw/init.rc, applied on the F0 side at merge time), and nothing here
+#   touches init's own library closure.
+# - vndservicemanager is not defined and must never be started on turner
+#   (SIGABRT loop; the vendor services register on /dev/binder's
+#   servicemanager — a7 toml, confirmed by the OS4 audit).
+# - The toml's LD_PRELOAD=/skyward/libkmsglog.so is omitted on purpose:
+#   that shim is part of the Skyward binary package and does not exist in
+#   the hybrid F1. The services log through the normal logd/kmsg path.
+
+# --- TEE chain ---------------------------------------------------------
+
+# Stock service name (OS4 /vendor/etc/init/tee-supplicant.rc). Runs as
+# root, not the stock rc's `system`: the TA files in /odm/mitee/ta are
+# root-owned and a system supplicant cannot read them (a7 toml, measured
+# on the device). Its own side effects from the stock rc (persist dirs,
+# vendor.teefs_state) are reproduced by turner-setup.sh.
+service vendor.tee-supplicant /vendor/bin/tee-supplicant
+    class hal
+    user root
+    group root system secure_element nfc
+    capabilities DAC_OVERRIDE SYS_RAWIO
+    setenv LD_LIBRARY_PATH /mnt/system/system/lib64:/mnt/system/system/lib64/bootstrap:/apex/com.android.i18n/lib64:/apex/com.android.runtime/lib64:/apex/com.android.runtime/lib64/bionic:/vendor/lib64:/mnt/system_ext/lib64
+    seclabel u:r:recovery:s0
+    disabled
+
+# Stock service name (OS4 keymint rc: vendor.keymint-mitee). One process
+# registers IKeyMintDevice + ISecureClock + ISharedSecret; all three
+# VINTF manifests must be visible to servicemanager or it aborts while
+# registering the second one (a7 toml) — the payload ramdisk carries the
+# three AIDL manifest copies and the installed vendor ships its own.
+# toml order: the ramdisk's own /system/lib64 first, then the installed
+# system's libraries.
+service vendor.keymint-mitee /vendor/bin/hw/android.hardware.security.keymint@3.0-service.mitee
+    class early_hal
+    user root
+    group root system drmrpc
+    capabilities DAC_OVERRIDE SYS_RAWIO
+    setenv LD_LIBRARY_PATH /system/lib64:/system/lib64/bootstrap:/mnt/system/system/lib64:/mnt/system/system/lib64/bootstrap:/apex/com.android.i18n/lib64:/apex/com.android.runtime/lib64:/apex/com.android.runtime/lib64/bionic:/vendor/lib64:/mnt/system_ext/lib64
+    setenv LD_PRELOAD /system/etc/hybrid/libkmsglog.so /system/etc/hybrid/libbinder_trace_stub.so
+    seclabel u:r:recovery:s0
+    disabled
+
+# Stock service name (OS4 gatekeeper rc: vendor.gatekeeper_mitee).
+# TWRP verifies the lock-screen credential through
+# android.hardware.gatekeeper.IGatekeeper/default on /dev/binder.
+service vendor.gatekeeper_mitee /vendor/bin/hw/android.hardware.gatekeeper-service.mitee
+    class hal
+    user root
+    group root system
+    capabilities DAC_OVERRIDE SYS_RAWIO
+    setenv LD_LIBRARY_PATH /system/lib64:/system/lib64/bootstrap:/mnt/system/system/lib64:/mnt/system/system/lib64/bootstrap:/apex/com.android.i18n/lib64:/apex/com.android.runtime/lib64:/apex/com.android.runtime/lib64/bionic:/vendor/lib64:/mnt/system_ext/lib64
+    setenv LD_PRELOAD /system/etc/hybrid/libkmsglog.so /system/etc/hybrid/libbinder_trace_stub.so
+    seclabel u:r:recovery:s0
+    disabled
+
+# --- Touch -------------------------------------------------------------
+
+# Xiaomi touch HAL (HTCP mode): the NT36536E driver probes and creates
+# the input device, but only this HAL turns raw frames into evdev events
+# (a7 toml). Library order is the measured one: the *ramdisk's* libbinder
+# first — the HAL registers with the recovery's own servicemanager, and
+# mixing the installed system's libbinder (SYST parcel header) with the
+# recovery's (RECO) aborts it — then the installed system's libraries for
+# libui/libsync, with /odm/lib64 (its own libtouchreport) before
+# /vendor/lib64.
+service vendor.touchfeature /odm/bin/hw/vendor.xiaomi.hw.touchfeature-service
+    class hal
+    user system
+    group system input
+    capabilities SYS_NICE
+    setenv LD_LIBRARY_PATH /system/lib64:/system/lib64/bootstrap:/mnt/system/system/lib64:/mnt/system/system/lib64/bootstrap:/apex/com.android.i18n/lib64:/apex/com.android.runtime/lib64:/apex/com.android.runtime/lib64/bionic:/odm/lib64:/vendor/lib64:/mnt/system_ext/lib64
+    setenv LD_PRELOAD /system/etc/hybrid/libkmsglog.so
+    seclabel u:r:recovery:s0
+    disabled
+
+# --- Setup oneshot ------------------------------------------------------
+
+service turner-setup /system/bin/turner-setup.sh
+    class late_start
+    user root
+    seclabel u:r:recovery:s0
+    oneshot
+    disabled
+
+on boot
+    start turner-setup
+
+# The folders the touch HAL writes its state into (a7's appended rc
+# block, verbatim). /data is not yet decrypted at this point; the
+# directories land on the recovery rootfs and are recreated every boot,
+# which is exactly what the a7 image does too.
+on boot
+    mkdir /data/vendor 0771 system system
+    mkdir /data/vendor/touch 0771 system system
+    mkdir /data/vendor/touch_state 0771 system system
+    mkdir /data/vendor/mqsas_common 0771 system system
+    mkdir /data/vendor/bsplog 0775 system system
+    mkdir /data/vendor/bsplog/touch 0775 system system
+
+# First-pass device-node staging (turner-setup.sh repeats it once the
+# driver module and the HAL are up; nodes that do not exist yet are
+# simply skipped by init). Modes/owners are the a7 toml [[owners]] lists.
+on boot
+    chown system system /dev/tee0
+    chmod 0660 /dev/tee0
+    chown system system /dev/teepriv0
+    chmod 0660 /dev/teepriv0
+    chown system system /dev/rpmb0
+    chmod 0660 /dev/rpmb0
+    chown system system /dev/mmcblk0rpmb
+    chmod 0660 /dev/mmcblk0rpmb
+    chown system system /dev/xiaomi-touch
+    chmod 0666 /dev/xiaomi-touch
