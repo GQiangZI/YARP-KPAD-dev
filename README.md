@@ -37,7 +37,7 @@
 | 原始设备树、libinit、BootControl | **已完整迁入原仓库基线（锁定提交 `1bb97be`）** |
 | MT6991 初始化配置、fstab 与 vold 补丁 | **文件已迁移，实机依赖仍需验证** |
 | Skyward 快/慢启动镜像 | 已建立结构与 init 差异分析文档；文件依赖尚未全部核对 |
-| 基线 DTB、内核模块、固件与 HAL | **原仓库 274 个 `.ko` 已迁入，但与两个能启动的 Skyward 3.0.306 镜像对比后，274 个模块全部不一致；尚未替换** |
+| 基线 DTB、内核模块、固件与 HAL | **已完成 274 个 Skyward 驱动提取与校验，整套入库工作流就绪；等待参考 ZIP 上传以完成远端替换** |
 | YARP GUI2 / 平板显示与触控 | 待编译、待实机验证 |
 | Data 解密、ADB、MTP、备份恢复 | 待实机验证 |
 | Wi-Fi | 可选，暂缓 |
@@ -62,6 +62,7 @@
 - [KeyMint 解密版本与 AVB 安全风险](analysis/CRYPTO_PATCH_LEVEL_AVB_RISKS.md)
 - [274 个 Skyward 驱动版本差异（重要）](analysis/SKYWARD_PLATFORM_MODULE_AUDIT.md)
 - [驱动整体同步工具（默认只读）](tools/sync_skyward_modules.py) · [驱动版本校验](tools/check_skyward_module_set.py)
+- [Skyward 完整驱动整合说明（中英双语）](docs/SKYWARD_DRIVER_INTEGRATION.md) · [自动导入工作流](.github/workflows/integrate-skyward-modules.yml)
 - [原始设备树完整导入记录](analysis/BASELINE_IMPORT_REPORT.json) · [导入任务](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43518739112)
 - [最新静态与驱动同步测试结果](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43528757341)
 - [YARP 手动构建配置](.github/workflows/build-twrp.yml)（测试镜像默认不公开导出）
