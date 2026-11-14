@@ -36,7 +36,7 @@ Bring the upstream **YARP GUI2/LVGL user interface and core recovery functions**
 | --- | --- |
 | Core device tree, libinit and BootControl | **Imported from locked upstream commit `1bb97be`** |
 | MT6991 init, fstab and vold patches | **File import completed; device-level dependencies remain unverified** |
-| Skyward fast/slow images | Layout and init comparison documents recorded; file dependencies not fully audited |
+| Skyward reference (owner-reported on-device test, 2026-11-14) | **Recovery boots, display and touch work; Data decryption fails. Exact tested variant, installed firmware and failure logs remain unconfirmed** |
 | Baseline DTB, modules, firmware and HALs | **274 Skyward driver files extracted and verified; source-only import automation ready, awaiting binary ZIP upload to GitHub** |
 | YARP GUI2, tablet display and touch | Build and device tests pending |
 | Data decryption, ADB/MTP, backup/restore | Device tests pending |
