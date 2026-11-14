@@ -1,0 +1,3 @@
+Integrated turner YARP build request
+Source: matched 274-module set and native GUI2 touch lifecycle integration.
+Build vendor_boot, audit actual output, retain diagnostics; no automatic flash-image publication.
