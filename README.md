@@ -10,10 +10,7 @@
 
 让 Redmi K Pad 使用上游 **YARP 原生 GUI2/LVGL 界面及核心 Recovery 功能**，并优先参考已能在本机运行的 Skyward turner 镜像，适配联发科平台的启动、驱动、触控、解密与 USB 服务。
 
-- **保留 YARP 原生界面**：菜单、交互、布局策略、文件管理、安装、备份恢复、挂载、终端、设置等保持与上游一致，不使用 Skyward 界面替代。
-- **优先保证基础功能**：启动、显示、触控、ADB/MTP、数据解密、备份恢复、Fastbootd 等。
-- **Wi-Fi 是可选功能**：上游已有 Wi-Fi 界面及后端；但 turner 的驱动与服务尚未验证。第一阶段不启用，不影响其他功能推进。
-- **安全优先**：编译通过、静态检查通过或 Skyward 成功启动，都不等于本项目生成的 YARP 镜像已经通过实机验证。
+- **保留 YARP 原生界面**：菜单、交互、布局策略、文件管理、安装、备份恢复、挂载、终端、设置等保持与上游一致
 
 ## 设备信息
 
@@ -28,7 +25,7 @@
 | 输出目标 | **`vendor_boot.img`**（不是独立 `recovery.img`） |
 | 启动结构 | Vendor Boot v4、双 ramdisk、LZ4 legacy |
 
-> 小米平板 8 Pro（`piano`）的 YARP 横屏配置仅作 UI 参考；它的高通驱动、触控旋转参数和 `recovery.img` 分区方式**不能直接照搬**到 turner。
+> 小米平板 8 Pro（`piano`）的 YARP 横屏配置仅作 UI 参考 turner。
 
 ## 开发进度
 
@@ -47,9 +44,9 @@
 
 ## 重要安全说明
 
-**当前仓库已经迁入原设备树的主要源码和二进制，但尚未完成 YARP 整体编译与实机启动验证，不能认定可刷写。** 尤其需要确保 Vendor Boot v4 的 header、DTB、PLATFORM/RECOVERY ramdisk、原厂模块、fstab、init 与 HAL 依赖正确，且镜像不超过 64 MiB 分区容量。不能只凭“构建成功”发布给其他用户刷机。
+**当前仓库已经迁入原设备树的主要源码和二进制，但尚未完成 YARP 整体编译与实机启动验证，不能认定可刷写。** 尤其需要确保 Vendor Boot v4 的 header、DTB、PLATFORM/RECOVERY ramdisk、原厂模块、fstab、init 与 HAL 依赖正确，且镜像不超过 64 MiB 分区容量。
 
-首次实机测试前应准备可核验的原厂镜像与恢复方案，并记录设备及固件版本；未经明确验证的产物只允许作为开发测试材料，不可标记为稳定版。
+首次实机测试前应准备可核验的原厂镜像与恢复方案，并记录设备及固件版本；未经明确验证的产物只允许作为开发测试材料。
 
 - [安全与刷机前检查（中文）](SAFETY.zh-CN.md) · [English](SAFETY.md)
 - [YARP GUI2 功能与 Wi-Fi 验收要求（中文）](docs/YARP_GUI2_FEATURE_PARITY.zh-CN.md) · [English](docs/YARP_GUI2_FEATURE_PARITY.md)
