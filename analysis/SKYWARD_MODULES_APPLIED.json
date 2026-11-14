@@ -1,0 +1,9 @@
+{
+  "kernel_modules": 274,
+  "metadata_files": 5,
+  "module_set_sha256": "fc7683ba891f1b7bd833c3d75fd0064c76e31cf0b22f4f16be120e32d530cccb",
+  "full_set_sha256": "66812e332147fee97474c5b9538f54cb07ce9c3bd84af3b5788a67fc1c6d9c31",
+  "status": "MODULE_BYTES_MATCH_ONLY_NOT_BUILT_OR_BOOT_TESTED",
+  "source_firmware": "OS3.0.306.0.WAOCNXM",
+  "changed_files": 274
+}
