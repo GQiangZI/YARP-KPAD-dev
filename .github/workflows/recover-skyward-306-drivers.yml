@@ -18,42 +18,56 @@ jobs:
   extract:
     if: github.repository == 'GQiangZI/YARP-KPAD-dev'
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Fetch pinned remote OTA payload extractor
+      - name: Download complete stock 306 Fastboot archive and check published MD5
         shell: bash
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP"
-          curl --fail --location --retry 3 --max-time 120 \
-            'https://github.com/rhythmcache/payload-dumper-rust/releases/download/payload-dumper-rust-v0.8.4/payload_dumper-linux-x86_64.zip' \
-            -o payload-dumper.zip
-          echo 'd2a7cf4d8ef4daa73ebd34e0c6f77eb6c116a1745a1b31ad897e9ce2b2f54151  payload-dumper.zip' | sha256sum -c -
-          unzip -q payload-dumper.zip -d payload-tool
-          TOOL="$(find "$RUNNER_TEMP/payload-tool" -type f -name payload_dumper -print -quit)"
-          test -n "$TOOL"
-          chmod +x "$TOOL"
-          echo "PAYLOAD_TOOL=$TOOL" >> "$GITHUB_ENV"
-          "$TOOL" --version
+          df -h .
+          test "$(df --output=avail -B1 . | tail -1 | tr -d ' ')" -gt 13000000000
+          curl --fail --location --retry 2 --connect-timeout 30 --max-time 2400 \
+            --speed-limit 32768 --speed-time 90 \
+            'https://bkt-sgp-miui-ota-update-alisgp.oss-ap-southeast-1.aliyuncs.com/OS3.0.306.0.WAOCNXM/turner_images_OS3.0.306.0.WAOCNXM_20260528.0000.00_16.0_cn_f782a8218c.tgz' \
+            -o stock306.tgz
+          echo 'f782a8218c67bce2c88af4b67564904c  stock306.tgz' | md5sum -c -
           if ! command -v lz4 >/dev/null; then
             sudo apt-get update -qq
             sudo apt-get install -y lz4
           fi
-      - name: Extract only vendor_boot from the pinned official 306 OTA
+      - name: Read only the vendor_boot member without unpacking or executing firmware
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/stock306"
-          ROM_PATH='OS3.0.306.0.WAOCNXM/turner-ota_full-OS3.0.306.0.WAOCNXM-user-16.0-d51a69f089.zip'
-          if ! timeout 15m "$PAYLOAD_TOOL" "https://bigota.d.miui.com/$ROM_PATH" -i vendor_boot -t 4 -o "$RUNNER_TEMP/stock306"; then
-            rm -rf "$RUNNER_TEMP/stock306"
-            mkdir -p "$RUNNER_TEMP/stock306"
-            timeout 15m "$PAYLOAD_TOOL" "https://hugeota.d.miui.com/$ROM_PATH" -i vendor_boot -t 4 -o "$RUNNER_TEMP/stock306"
-          fi
-          test -s "$RUNNER_TEMP/stock306/vendor_boot.img"
+          python3 - <<'PY'
+          import os, shutil, tarfile
+          from pathlib import Path, PurePosixPath
+          root = Path(os.environ["RUNNER_TEMP"])
+          out = root / "stock306" / "vendor_boot.img"
+          out.parent.mkdir(exist_ok=True)
+          found = 0
+          with tarfile.open(root / "stock306.tgz", "r|gz") as archive:
+              for member in archive:
+                  path = PurePosixPath(member.name)
+                  if path.name != "vendor_boot.img" or path.parent.name != "images":
+                      continue
+                  if found or not member.isfile() or not 0 < member.size <= 67108864:
+                      raise SystemExit("Unexpected or duplicate vendor_boot image")
+                  with archive.extractfile(member) as src, out.open("xb") as dst:
+                      shutil.copyfileobj(src, dst)
+                  if out.stat().st_size != member.size:
+                      raise SystemExit("Incomplete vendor_boot extraction")
+                  found += 1
+          if found != 1:
+              raise SystemExit("Missing stock vendor_boot")
+          print("Extracted stock vendor_boot:", out.stat().st_size)
+          PY
+          sha256sum "$RUNNER_TEMP/stock306/vendor_boot.img"
+          rm "$RUNNER_TEMP/stock306.tgz"
       - name: Require exact match to all Skyward reference bytes
         run: |
           set -euo pipefail
@@ -100,7 +114,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if ! git diff --cached --quiet; then
-            git commit -m 'turner: import exact Skyward 306 driver bytes recovered from official OTA [skip ci]'
+            git commit -m 'turner: import exact Skyward 306 driver bytes recovered from stock Fastboot archive [skip ci]'
             git push origin HEAD:main
           fi
           echo '### Verified Skyward-identical 274-module set (source only)' >> "$GITHUB_STEP_SUMMARY"
