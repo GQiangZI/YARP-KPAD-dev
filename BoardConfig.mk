@@ -93,6 +93,12 @@ TARGET_PREBUILT_DTB := $(DEVICE_PATH)/prebuilt/dtb
 BOARD_USES_GENERIC_KERNEL_IMAGE := true
 BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT := true
+# The common Skyward PLATFORM ramdisk already supplies first-stage modules.
+# The NT36536E input driver lives in the installed vendor_dlkm, not in that
+# 274-module set. YARP twrp_flags.go only enables its vendor module loader
+# when this filename list is nonempty; TW_LOAD_VENDOR_BOOT_MODULES alone
+# does not enable it. Keep dependency resolution in upstream libmodprobe.
+TW_LOAD_VENDOR_MODULES := "nt36536e_touch_turner.ko"
 TW_LOAD_VENDOR_BOOT_MODULES := true
 # 原厂 turner vendor_boot.img 实测 header（见 analysis/vendor_boot_header.json）：
 #   kernel_addr=0x80000000  ramdisk_addr=0xA6F00000
