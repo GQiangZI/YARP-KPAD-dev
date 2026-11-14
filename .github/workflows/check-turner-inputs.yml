@@ -7,6 +7,8 @@ on:
       - ".github/workflows/check-turner-inputs.yml"
       - "tools/sync_skyward_modules.py"
       - "tools/test_sync_skyward_modules.py"
+      - "tools/apply_verified_skyward_zip.py"
+      - "tools/test_apply_verified_skyward_zip.py"
       - "tools/check_turner_inputs.py"
       - "tools/check_skyward_module_set.py"
       - "tools/check_reference_vendor_boot.py"
@@ -43,6 +45,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest -v tools/test_sync_skyward_modules.py
+
+      - name: Test strict archive integration with synthetic module bundle
+        run: |
+          set -euo pipefail
+          python3 -m unittest -v tools/test_apply_verified_skyward_zip.py
 
       - name: Report safety boundary
         if: always()
