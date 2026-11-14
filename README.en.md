@@ -37,7 +37,7 @@ Bring the upstream **YARP GUI2/LVGL user interface and core recovery functions**
 | Core device tree, libinit and BootControl | **Imported from locked upstream commit `1bb97be`** |
 | MT6991 init, fstab and vold patches | **File import completed; device-level dependencies remain unverified** |
 | Skyward fast/slow images | Layout and init comparison documents recorded; file dependencies not fully audited |
-| Baseline DTB, modules, firmware and HALs | **Original 274 `.ko` files imported; all 274 differ from the boot-tested Skyward 3.0.306 set and have NOT yet been replaced** |
+| Baseline DTB, modules, firmware and HALs | **274 Skyward driver files extracted and verified; source-only import automation ready, awaiting binary ZIP upload to GitHub** |
 | YARP GUI2, tablet display and touch | Build and device tests pending |
 | Data decryption, ADB/MTP, backup/restore | Device tests pending |
 | Wi-Fi | Optional / deferred |
@@ -62,6 +62,7 @@ Before testing on hardware, prepare a verified stock image, a recovery/rollback 
 - [KeyMint patch-level and AVB risk review](analysis/CRYPTO_PATCH_LEVEL_AVB_RISKS.md)
 - [Skyward full 274-module mismatch report](analysis/SKYWARD_PLATFORM_MODULE_AUDIT.md)
 - [Read-only-by-default Skyward module sync](tools/sync_skyward_modules.py) · [Module version fingerprint check](tools/check_skyward_module_set.py)
+- [Skyward driver integration instructions (Chinese / English)](docs/SKYWARD_DRIVER_INTEGRATION.md) · [Automated importer](.github/workflows/integrate-skyward-modules.yml)
 - [Full baseline import audit](analysis/BASELINE_IMPORT_REPORT.json) · [successful import](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43518739112)
 - [Latest static and module sync test run](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43528757341)
 - [Manual-only YARP build workflow](.github/workflows/build-twrp.yml) (untested image artifact opt-in)
