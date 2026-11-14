@@ -116,6 +116,10 @@ name: Build YARP turner (MANUAL - UNTESTED)
 # No match => fail in seconds, listing the bootimage goals that exist.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/build-requests/first-integrated-yarp.txt"
   workflow_dispatch:
     inputs:
       TWRP_MANIFEST_URL:
@@ -145,6 +149,7 @@ permissions:
 
 jobs:
   build:
+    if: github.repository == 'GQiangZI/YARP-KPAD-dev'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     # If any code path still honours a stray --depth, convert it to a
@@ -162,12 +167,12 @@ jobs:
         {
           echo 'BUILD_INFO<<EOF'
           echo
-          echo Manifest url: ${{ github.event.inputs.TWRP_MANIFEST_URL }}
-          echo Manifest branch: ${{ github.event.inputs.TWRP_MANIFEST_BRANCH }}
-          echo Device tree branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}
+          echo Manifest url: ${{ inputs.TWRP_MANIFEST_URL || 'https://github.com/TWRP-Test/platform_manifest_twrp_aosp' }}
+          echo Manifest branch: ${{ inputs.TWRP_MANIFEST_BRANCH || 'twrp-16.0' }}
+          echo Device tree branch: ${{ github.event_name == 'push' && github.sha || inputs.DEVICE_TREE_BRANCH || 'main' }}
           echo Device path: xiaomi/turner
           echo Device name: turner
-          echo Build target: ${{ github.event.inputs.BUILD_PARTITION }}.img
+          echo Build target: ${{ inputs.BUILD_PARTITION || 'vendor_boot' }}.img
           echo Build date: `date`
           echo
           echo EOF
@@ -277,7 +282,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         path: device-tree
-        ref: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}
+        ref: ${{ github.event_name == 'push' && github.sha || inputs.DEVICE_TREE_BRANCH || 'main' }}
 
     - name: Preflight complete turner inputs before expensive source sync
       shell: bash
@@ -286,9 +291,9 @@ jobs:
         python3 device-tree/tools/check_turner_inputs.py
         # Driver import has completed; never compile against a mixed/mismatched module set.
         python3 device-tree/tools/check_skyward_module_set.py --tree device-tree
-        test "${{ github.event.inputs.BUILD_PARTITION }}" = "vendor_boot"
-        test "${{ github.event.inputs.TWRP_MANIFEST_BRANCH }}" = "twrp-16.0"
-        test "${{ github.event.inputs.TWRP_MANIFEST_URL }}" = "https://github.com/TWRP-Test/platform_manifest_twrp_aosp"
+        test "${{ inputs.BUILD_PARTITION || 'vendor_boot' }}" = "vendor_boot"
+        test "${{ inputs.TWRP_MANIFEST_BRANCH || 'twrp-16.0' }}" = "twrp-16.0"
+        test "${{ inputs.TWRP_MANIFEST_URL || 'https://github.com/TWRP-Test/platform_manifest_twrp_aosp' }}" = "https://github.com/TWRP-Test/platform_manifest_twrp_aosp"
         echo "::warning title=Development image only::No YARP image has passed Redmi K Pad hardware tests."
 
     - name: Sync TWRP 16.0 (YARP) source
@@ -297,8 +302,8 @@ jobs:
         # option (repo script:405). Do NOT pass --depth=1: a shallow clone
         # creates .git/shallow, and the tag-pinned AOSP revision can make
         # repo fall back to --depth=2147483647 (INT_MAX) = full history.
-        repo init -u ${{ github.event.inputs.TWRP_MANIFEST_URL }} \
-          -b ${{ github.event.inputs.TWRP_MANIFEST_BRANCH }} \
+        repo init -u ${{ inputs.TWRP_MANIFEST_URL || 'https://github.com/TWRP-Test/platform_manifest_twrp_aosp' }} \
+          -b ${{ inputs.TWRP_MANIFEST_BRANCH || 'twrp-16.0' }} \
           --partial-clone --clone-filter=blob:none \
           --no-clone-bundle --repo-rev=v2.65
 
@@ -474,7 +479,7 @@ jobs:
           # kati only reports that AFTER the whole analysis (~15 min in).
           # Resolve the goal from the synced tree instead of glueing strings,
           # and fail in seconds (printing the real list) if nothing matches.
-          PARTITION="${{ github.event.inputs.BUILD_PARTITION }}"
+          PARTITION="${{ inputs.BUILD_PARTITION || 'vendor_boot' }}"
           [ -n "$PARTITION" ] || PARTITION=vendor_boot
           case "$PARTITION" in
             vendor_boot) CANDS="vendorbootimage vendor_bootimage" ;;
@@ -584,11 +589,19 @@ jobs:
     - name: Verify output vendor_boot v4 layout before uploading an untested artifact
       run: |
         set -euo pipefail
-        python3 device-tree/tools/verify_vendor_boot.py out/target/product/turner/vendor_boot.img
-        if [ "${{ inputs.EXPORT_UNTESTED_IMAGE }}" = "true" ]; then
-          python3 device-tree/tools/check_reference_vendor_boot.py out/target/product/turner/vendor_boot.img
-        else
-          echo "::warning title=No export::This diagnostic build is not a public flash image."
+        IMAGE=out/target/product/turner/vendor_boot.img
+        BINARY=out/target/product/turner/recovery/root/system/bin/recovery
+        {
+          python3 device-tree/tools/verify_vendor_boot.py "$IMAGE"
+          python3 device-tree/tools/check_reference_vendor_boot.py "$IMAGE" --recovery-binary "$BINARY"
+          if [ -x out/host/linux-x86/bin/avbtool ]; then
+            out/host/linux-x86/bin/avbtool verify_image --image "$IMAGE"
+          else
+            python3 external/avb/avbtool.py verify_image --image "$IMAGE"
+          fi
+        } 2>&1 | tee vendor-boot-audit.log
+        if [ "${{ inputs.EXPORT_UNTESTED_IMAGE }}" != "true" ]; then
+          echo "::warning title=No export::This build request validates compilation and packaging without exposing an untested flash image."
         fi
         echo "::warning title=UNTESTED DO NOT FLASH::Structure validated; this is not a hardware-tested Recovery."
 
@@ -599,7 +612,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: build-log-${{ github.run_number }}
-        path: build.log
+        path: |
+          build.log
+          vendor-boot-audit.log
         if-no-files-found: ignore
         retention-days: 14
 
