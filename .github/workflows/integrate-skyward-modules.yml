@@ -1,0 +1,79 @@
+name: Import verified Skyward 306 drivers (SOURCE ONLY)
+
+# Upload the exact 15.6 MiB reference ZIP into the path below via GitHub UI.
+# This workflow validates it, imports all 274 .ko files as a unit, and then
+# deletes the temporary ZIP from the tracked tree in the same source commit.
+# No Recovery image is built or published, and no device is flashed.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "references/skyward/Skyward_turner_OS3.0.306_modules_reference.zip"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: integrate-skyward-turner-306
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    if: github.repository == 'GQiangZI/YARP-KPAD-dev' && !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Validate the exact Skyward archive exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=references/skyward/Skyward_turner_OS3.0.306_modules_reference.zip
+          test -f "$ZIP" || { echo "::error::Known-good ZIP missing; upload the archive first"; exit 1; }
+          echo '28ca760a4b6cc867c04493b6b29e0104b1ee1fd820a264b6c3169c336d811fad  references/skyward/Skyward_turner_OS3.0.306_modules_reference.zip' | sha256sum -c -
+
+      - name: Dry-run entire 274-module replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/apply_verified_skyward_zip.py \
+            references/skyward/Skyward_turner_OS3.0.306_modules_reference.zip --tree .
+
+      - name: Import known-good driver set and revalidate content
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/apply_verified_skyward_zip.py \
+            references/skyward/Skyward_turner_OS3.0.306_modules_reference.zip --tree . --apply \
+            --report analysis/SKYWARD_MODULES_APPLIED.json
+          python3 tools/check_skyward_module_set.py --tree .
+          python3 tools/check_turner_inputs.py
+
+      - name: Remove temporary archive and commit only source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm references/skyward/Skyward_turner_OS3.0.306_modules_reference.zip
+          git add -A -- recovery/root/lib/modules analysis/SKYWARD_MODULES_APPLIED.json \
+            references/skyward/Skyward_turner_OS3.0.306_modules_reference.zip
+          git diff --cached --check
+          git diff --cached --name-only | while IFS= read -r file; do
+            case "$file" in
+              recovery/root/lib/modules/*.ko|analysis/SKYWARD_MODULES_APPLIED.json|references/skyward/Skyward_turner_OS3.0.306_modules_reference.zip) ;;
+              *) echo "::error::unexpected modified path $file"; exit 1 ;;
+            esac
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Import exact 274 Skyward OS3.0.306 modules (not flash tested) [skip ci]"
+          git push origin HEAD:main
+          echo '### Imported Skyward 274-module source set' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Source bytes, dependency metadata and module-set hashes verified.' >> "$GITHUB_STEP_SUMMARY"
+          echo '**No image built. NOT FLASH READY.**' >> "$GITHUB_STEP_SUMMARY"
