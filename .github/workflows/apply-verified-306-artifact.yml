@@ -1,0 +1,61 @@
+name: Apply verified Skyward 306 artifact (SOURCE ONLY)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-verified-306-artifact.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: integrate-skyward-turner-306
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    if: github.repository == 'GQiangZI/YARP-KPAD-dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-turner-306-module-set
+          run-id: 43582182554
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/verified-modules
+      - name: Apply and verify against pinned full-set fingerprints
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/integrate_stock_306_modules.py install \
+            "$RUNNER_TEMP/verified-modules" --tree . --report analysis/SKYWARD_MODULES_APPLIED.json
+          python3 tools/check_skyward_module_set.py --tree .
+          python3 tools/check_turner_inputs.py
+      - name: Commit source-only changes atop latest main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A -- recovery/root/lib/modules analysis/SKYWARD_MODULES_APPLIED.json
+          git diff --cached --check
+          git diff --cached --name-only | while IFS= read -r file; do
+            case "$file" in
+              recovery/root/lib/modules/*.ko|analysis/SKYWARD_MODULES_APPLIED.json) ;;
+              *) echo "::error::unexpected changed path $file"; exit 1 ;;
+            esac
+          done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git diff --cached --quiet; then
+            git commit -m 'turner: integrate verified complete Skyward 306 module set [skip ci]'
+            git push origin HEAD:main
+          fi
+          echo '### 274 Skyward-identical driver modules verified and integrated' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No image built or flashed; real hardware compatibility remains untested.' >> "$GITHUB_STEP_SUMMARY"
