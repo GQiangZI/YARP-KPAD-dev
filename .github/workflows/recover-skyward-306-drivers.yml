@@ -1,0 +1,107 @@
+name: Recover exact Skyward 306 drivers from stock (SOURCE ONLY)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recover-skyward-306-drivers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integrate-skyward-turner-306
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    if: github.repository == 'GQiangZI/YARP-KPAD-dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch pinned remote OTA payload extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 --max-time 120 \
+            'https://github.com/rhythmcache/payload-dumper-rust/releases/download/payload-dumper-rust-v0.8.4/payload_dumper-linux-x86_64.zip' \
+            -o payload-dumper.zip
+          echo 'd2a7cf4d8ef4daa73ebd34e0c6f77eb6c116a1745a1b31ad897e9ce2b2f54151  payload-dumper.zip' | sha256sum -c -
+          unzip -q payload-dumper.zip -d payload-tool
+          TOOL="$(find "$RUNNER_TEMP/payload-tool" -type f -name payload_dumper -print -quit)"
+          test -n "$TOOL"
+          chmod +x "$TOOL"
+          echo "PAYLOAD_TOOL=$TOOL" >> "$GITHUB_ENV"
+          "$TOOL" --version
+          if ! command -v lz4 >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y lz4
+          fi
+      - name: Extract only vendor_boot from the pinned official 306 OTA
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/stock306"
+          ROM_PATH='OS3.0.306.0.WAOCNXM/turner-ota_full-OS3.0.306.0.WAOCNXM-user-16.0-d51a69f089.zip'
+          if ! timeout 15m "$PAYLOAD_TOOL" "https://bigota.d.miui.com/$ROM_PATH" -i vendor_boot -t 4 -o "$RUNNER_TEMP/stock306"; then
+            rm -rf "$RUNNER_TEMP/stock306"
+            mkdir -p "$RUNNER_TEMP/stock306"
+            timeout 15m "$PAYLOAD_TOOL" "https://hugeota.d.miui.com/$ROM_PATH" -i vendor_boot -t 4 -o "$RUNNER_TEMP/stock306"
+          fi
+          test -s "$RUNNER_TEMP/stock306/vendor_boot.img"
+      - name: Require exact match to all Skyward reference bytes
+        run: |
+          set -euo pipefail
+          python3 tools/integrate_stock_306_modules.py extract \
+            "$RUNNER_TEMP/stock306/vendor_boot.img" "$RUNNER_TEMP/verified-modules"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-turner-306-module-set
+          path: ${{ runner.temp }}/verified-modules/
+          if-no-files-found: error
+          retention-days: 1
+  integrate:
+    needs: extract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-turner-306-module-set
+          path: ${{ runner.temp }}/verified-modules
+      - name: Recheck and replace only the complete driver set
+        run: |
+          set -euo pipefail
+          python3 tools/integrate_stock_306_modules.py install \
+            "$RUNNER_TEMP/verified-modules" --tree . --report analysis/SKYWARD_MODULES_APPLIED.json
+          python3 tools/check_skyward_module_set.py --tree .
+          python3 tools/check_turner_inputs.py
+      - name: Commit only the verified binary modules and audit record
+        run: |
+          set -euo pipefail
+          git add -A -- recovery/root/lib/modules analysis/SKYWARD_MODULES_APPLIED.json
+          git diff --cached --check
+          git diff --cached --name-only | while IFS= read -r file; do
+            case "$file" in
+              recovery/root/lib/modules/*.ko|analysis/SKYWARD_MODULES_APPLIED.json) ;;
+              *) echo "::error::unexpected changed path $file"; exit 1 ;;
+            esac
+          done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git diff --cached --quiet; then
+            git commit -m 'turner: import exact Skyward 306 driver bytes recovered from official OTA [skip ci]'
+            git push origin HEAD:main
+          fi
+          echo '### Verified Skyward-identical 274-module set (source only)' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No YARP build, flash or hardware verification.' >> "$GITHUB_STEP_SUMMARY"
