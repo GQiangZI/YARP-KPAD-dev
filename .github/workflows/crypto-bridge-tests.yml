@@ -1,0 +1,54 @@
+name: turner crypto bridge checks
+
+on:
+  push:
+    paths:
+      - hybrid/stage48/**
+      - tests/stage48/**
+      - .github/workflows/crypto-bridge-tests.yml
+  pull_request:
+    paths:
+      - hybrid/stage48/**
+      - tests/stage48/**
+      - .github/workflows/crypto-bridge-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check host behavior and shell syntax
+        run: |
+          python3 tests/stage48/test_crypto_bridge.py
+          sh -n hybrid/stage48/turner-crypto-status.sh
+          python3 -m py_compile hybrid/stage48/build.py
+      - name: Build device bridge
+        run: |
+          python3 -m pip install ziglang==0.17.1 lz4 pyelftools
+          mkdir -p build
+          python3 -m ziglang cc -target aarch64-linux-android -mcpu=generic+lse \
+            -Os -ffreestanding -fno-stack-protector -nostdlib -shared -fPIC -s \
+            -Wall -Wextra -Werror -Wl,-z,max-page-size=4096 \
+            -Wl,-soname,libturner_crypto.so \
+            hybrid/stage48/libturner_crypto.c -o build/libturner_crypto.so
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'hybrid/stage48')
+          from build import audit_elf
+          imports = audit_elf(Path('build/libturner_crypto.so').read_bytes())
+          assert not any(s.startswith('__aarch64_') for s in imports), imports
+          print('ARM64 exports and dependency audit passed:', imports)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turner-v335-crypto-bridge-arm64
+          path: build/libturner_crypto.so
+          retention-days: 14
