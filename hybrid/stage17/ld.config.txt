@@ -1,0 +1,93 @@
+# Hybrid recovery linker configuration (v3.1).
+#
+# Until now this file did not exist in the merged ramdisk: init's
+# early-init copy to /linkerconfig/ld.config.txt failed, F0's copy
+# there is 0 bytes, and every process ran with NO namespace config
+# (the "failed to find generated linker configuration" warning on
+# every exec). This file restores a real configuration, shaped like
+# stock HyperOS's (per-role namespaces over the system, vendor, odm
+# and APEX trees), adapted to the recovery mount layout:
+#   /system         = the recovery ramdisk (SDK 35 generation;
+#                     its libbinder.so speaks the RECO parcel tag
+#                     our servicemanager accepts)
+#   /mnt/system     = the installed HyperOS (SDK 37 generation)
+#   /vendor, /odm   = the installed vendor/odm mounts
+# The one deliberate deviation from stock: in the HAL namespaces,
+# libbinder_ndk.so resolves to the installed system's copy (via the
+# sysndk dir, which contains only that symlink) because the ramdisk
+# copy lacks AIBinder_Class_setTransactionCodeToFunctionNameMap,
+# while libbinder.so itself still resolves to the ramdisk copy so
+# parcels to servicemanager keep the RECO tag.
+
+dir.recovery = /system/bin
+dir.vendor = /vendor/bin
+dir.odm = /odm/bin
+dir.default = /
+
+# --- recovery's own processes: unchanged from the official YARP
+# --- config (single flat namespace over the ramdisk).
+[recovery]
+namespace.default.isolated = false
+namespace.default.search.paths = /system/${LIB}
+namespace.default.asan.search.paths = /data/asan/system/${LIB}
+namespace.default.asan.search.paths += /system/${LIB}
+namespace.default.hwasan.search.paths = /system/${LIB}/hwasan
+namespace.default.hwasan.search.paths += /system/${LIB}
+
+[default]
+namespace.default.isolated = false
+namespace.default.search.paths = /system/${LIB}
+namespace.default.search.paths += /vendor/${LIB}
+namespace.default.search.paths += /odm/${LIB}
+
+# --- vendor binaries (keymint, gatekeeper, tee-supplicant class).
+# Resolution order is the environment contract:
+#   sysndk            -> libbinder_ndk.so from the installed system
+#   /system/${LIB}    -> ramdisk base libs (libbinder.so = RECO)
+#   twrp16            -> payload-only libs (ICU family)
+#   /mnt/system/...   -> installed system libs (rkp, keymint support)
+#   APEX dirs         -> staged APEX libraries (ICU, runtime)
+#   vendor/odm        -> installed vendor libraries
+[vendor]
+namespace.default.isolated = false
+namespace.default.search.paths = /system/etc/hybrid/sysndk
+namespace.default.search.paths += /system/${LIB}
+namespace.default.search.paths += /system/${LIB}/twrp16
+namespace.default.search.paths += /mnt/system/system/${LIB}
+namespace.default.search.paths += /mnt/system/system/${LIB}/bootstrap
+namespace.default.search.paths += /apex/com.android.i18n/${LIB}
+namespace.default.search.paths += /apex/com.android.runtime/${LIB}
+namespace.default.search.paths += /apex/com.android.runtime/${LIB}/bionic
+namespace.default.search.paths += /vendor/${LIB}
+namespace.default.search.paths += /odm/${LIB}
+namespace.default.search.paths += /mnt/system_ext/${LIB}
+namespace.default.permitted.paths = /system/etc/hybrid/sysndk
+namespace.default.permitted.paths += /system/${LIB}
+namespace.default.permitted.paths += /mnt/system/system/${LIB}
+namespace.default.permitted.paths += /apex
+namespace.default.permitted.paths += /vendor/${LIB}
+namespace.default.permitted.paths += /odm/${LIB}
+namespace.default.permitted.paths += /mnt/system_ext/${LIB}
+
+# --- odm binaries (Xiaomi touchfeature HAL).
+# twrp16 first: the payload's ICU (libandroidicu/libicuuc/libicui18n)
+# is the partner the installed system's libxml2.so needs; in stock
+# HyperOS it comes from the com.android.i18n APEX.
+[odm]
+namespace.default.isolated = false
+namespace.default.search.paths = /system/${LIB}/twrp16
+namespace.default.search.paths += /system/${LIB}
+namespace.default.search.paths += /mnt/system/system/${LIB}
+namespace.default.search.paths += /mnt/system/system/${LIB}/bootstrap
+namespace.default.search.paths += /apex/com.android.i18n/${LIB}
+namespace.default.search.paths += /apex/com.android.runtime/${LIB}
+namespace.default.search.paths += /apex/com.android.runtime/${LIB}/bionic
+namespace.default.search.paths += /odm/${LIB}
+namespace.default.search.paths += /vendor/${LIB}
+namespace.default.search.paths += /mnt/system_ext/${LIB}
+namespace.default.permitted.paths = /system/${LIB}
+namespace.default.permitted.paths += /mnt/system/system/${LIB}
+namespace.default.permitted.paths += /apex
+namespace.default.permitted.paths += /odm/${LIB}
+namespace.default.permitted.paths += /vendor/${LIB}
+namespace.default.permitted.paths += /mnt/system_ext/${LIB}

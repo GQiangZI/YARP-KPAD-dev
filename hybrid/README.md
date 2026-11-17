@@ -5,54 +5,53 @@ OS4 原厂 vendor_boot 为底（F0/DTB 不动），F1 放 TWRP 用户态并做�
 解密/触控所需的 HAL 全部从已装系统在运行时拉起（沿用 Skyward a7 镜像的 device.toml 编排）。
 
 目标机：turner（MT6991 / ro.hardware = mt8799），面板 1880×3008，触控 Novatek NT36536E。
-当前系统基线：HyperOS OS4.0.3.0。
+**当前系统基线：HyperOS OS4.0.3.0 正式版**（平板已于 2026-11-12 升 OS4 正式版，BL 漏洞解锁保留至今）。
+注：`skyward-analysis/` 里的 a7/b8 参考镜像是 OS3.0.306 时代的产物，仅作编排参考；
+其 device.toml 编排已审计确认在 OS4 上原样可用（见 os4-service-audit）。
 
-## 当前状态（2026-11-15）
+## 当前状态（2026-11-17，v3.31）
 
 | 项目 | 状态 |
 |---|---|
-| 显示（GUI2） | ✅ v2.2 打通：libtwrpminui.so 5 字节补丁强制 legacy modeset，绕过高通 SDE plane 门（见 stage5/DRM-RESEARCH.md） |
-| 触控 | ❌ 进行中：v2.3 死于 modules.dep 绝对路径双拼 bug；v2.4 已改 basename 闭包加载，等实机日志定论（stage9/NOTE.md） |
-| HAL 注册 | ❌ 进行中：keymint/gatekeeper 在 v2.3 死于向 servicemanager 注册 AIDL 时的 libbase CHECK abort；v2.4 用单符号桩（见下）+ a7 库序验证中 |
-| 数据解密 | ⏳ 未测：从未输入过真实 PIN（此前日志里的 Decrypt 失败是 TWRP 的默认密码自动尝试 + 元数据解密失败）。turner 凭据链 = Gatekeeper + KeyMint@mitee，无 Weaver、无 eSE（decrypt-stack/FINDINGS.md） |
-| OTG / WiFi | ⏳ 按计划后置 |
+| 显示（GUI2） | ✅ v2.2 打通：libtwrpminui.so 5 字节补丁强制 legacy modeset，绕过高通 SDE plane 门（stage5/DRM-RESEARCH.md） |
+| 触控 | ✅ v3.12：THP 链卡在 /sys/class/touch/touch_dev/abnormal_event 属主（root:root 而 HAL 以 system 运行），stage_touch_owners 全量 chown 后打通 |
+| HAL 注册/存活 | ✅ v3.9 注册墙破（servicemanager VINTF 检查 NOP 补丁 + 拆分 binder 对 SDK35 libbinder.so / SDK36 libbinder_ndk.so + liblogcapture Accessor 桩）；v3.10 改监管进程常驻，不再被 oneshot 退出连带 SIGKILL |
+| OTG / U 盘 | ✅ 2026-11-16 实测挂载（/auto4-sdd-1）；改名 USB-OTG 尝试已回滚（v3.26 教训，见 CHANGELOG） |
+| 振动 | ✅ v3.25：补载 OS4 vendor_dlkm 的 aw8693x_vibrator.ko 后 vibratorfeature HAL 出振 |
+| keystore2 链路 | ✅ v3.27：装机 keystore2 与 mitee KeyMint 完成握手（current version 300）、注册 IKeystoreService、共享密钥协商成功，零崩溃 |
+| 数据解密 | ❌ 进行中：已修两处——原厂 fstab /data 行缺 metadata_encryption=（v3.28 setup 补丁）、keystore2 VINTF 声明版本对齐（v3.30）。当前卡点经探针实证：vold 用 NDK `AServiceManager_checkService` 轮询 keystore2（300×100ms），而该 API 在本 recovery 中对全部服务返回 null（含可用的 vibratorfeature），waitForService 正常——修复方向为 checkService→waitForService 转发垫片 |
+| WiFi | ⏳ 未做（计划顺序：解密 → OTG ✅ → WiFi） |
 
-## 构建史
+版本变更明细见 `CHANGELOG-draft.md`；解密栈审计见 `decrypt-stack/FINDINGS.md`。
 
-| 版本 | 结果 | SHA256（前 8 位） |
-|---|---|---|
-| v1（stage3b） | ❌ 卡 logo：未真正落实严格隔离，合并 F1 的老病带入 | eb55c81b |
-| v2（stage4） | ⚠️ 尺寸超限未出图；查明 OS4 原厂无 hwservicemanager | — |
-| v2.1（stage4b） | ❌ 卡 logo，但 adb 可达，拿到 recovery.log 定位到 DRM plane 门 | f33623cb |
-| v2.2（stage6） | 🎉 首次点亮 YARP 界面（显示完成） | 7adf15f1 |
-| v2.3（stage7） | 显示正常；触控/HAL 仍崩，日志定位到 modules.dep 路径 bug + 注册 abort | 331ce6f3 |
-| v2.4（stage8） | **当前版**：闭包加载修复 + HAL 并行启动 + binder 桩；2026-11-14 19:41 刷入，触控仍不行，日志待读 | 554cac23 |
+## 构建史（要点）
 
-镜像本体（64 MB）与 .so 二进制不入 git；构建/校验脚本与全部分析文档在此。
+| 版本 | 结果 |
+|---|---|
+| v1–v2.1 | ❌ 卡 logo（GUI2 DRM plane 门，见 stage5 研究） |
+| v2.2 | 🎉 首次点亮 YARP 界面，显示完成 |
+| v2.3–v2.9 | HAL 注册诸战：库序翻转、版本化桩证伪、modules.dep 绝对路径 bug 修复（触控驱动层 v2.4 通） |
+| v3.0–v3.5 | ld.config 命名空间、twrpbinder 拆分对、清单毒化教训 |
+| v3.6 | servicemanager 4 字节 NOP 补丁（F0 唯一改动点），health 注册通 |
+| v3.9 / v3.10 | 注册墙破 / 监管进程保活，HAL 全部注册并存活 |
+| v3.12 | 触控打通 |
+| v3.13–v3.23 | keystore2 引入与诸版排障（ICU/APEX、段错误定位到 getAllHalInstanceNames 空解引用，v6 桩修复）；并行启动重构、启动链守卫（拦截 lk/preloader 刷入） |
+| v3.24 | 并行事件驱动启动（就绪 5.99s）+ 振动 HAL 接入 |
+| v3.25 | 振动 ✅；keystore2 声明实例桩（v7），改走真 AIDL 路径 |
+| v3.27 | keystore2 链路全通（换回装机 keystore2） |
+| v3.28 / v3.30 | fstab metadata_encryption 补丁 / keystore2 VINTF 声明 8.0 对齐 |
+| v3.31 | **当前版**：诊断版，内置 keystore_cli_v2 + NDK 探针（kscli），定位 checkService 失效 |
+
+镜像本体（64 MB）与 .so 二进制不入 git；构建/校验脚本、运行时脚本与全部分析文档在此。
+stage10 起每代目录含该版构建脚本（buildN.py）与当时的运行时脚本快照。
 
 ## 关键结论
 
 - **DRM plane 门**：GUI2 的 minui DRM 后端是高通 SDE 移植，只认带专有
   `capabilities` 属性的 plane，联发科 plane 永远 0/2 —— 这是 v1–v5 全部「卡 logo」的总根源。
-- **符号普查**：装机系统（SDK 37 代）与 ramdisk（SDK 35 代）两代 binder 库之间，
-  rkp 链实际只缺一个符号 `AIBinder_Class_setTransactionCodeToFunctionNameMap`；
-  v2.4 以一个 4 KB 手工 ELF 桩（仅导出该符号、实现为 no-op ret）补齐，
-  使 HAL 可以回到 a7 的 ramdisk 优先库序。（桩的构建脚本待补回本目录。）
-- **modules.dep 闭包**：vendor_dlkm 的 modules.dep 用绝对路径写依赖，
-  加载器必须按 basename 解析并先挂规范路径 /vendor_dlkm；toybox modprobe 同样中招。
-- **Skyward a7/b8 差异**：仅 device.toml 与 recovery 本体两处；b8 多起的
-  vndservicemanager 在 turner 上会 SIGABRT 循环，a7 是调试后的定版（skyward-analysis/）。
-- **OS4 服务布局审计**：a7 的 toml 在 OS4 上原样可用；OS3→OS4 凭据链组成零差异。
-
-## 目录
-
-- `stage1/` 载荷回收与 OS4 切分报告
-- `stage2/` 混合编排设计
-- `stage3/`、`stage4/` v1/v2 构建校验记录（含尺寸超限与 F0 裁剪分析 `f0trim/`）
-- `stage5/` DRM 根源研究（stage6 的 5 字节补丁依据）
-- `stage6/` v2.2 构建/校验/补丁审计脚本
-- `stage7/` v2.3 构建/校验脚本 + v2.2 取证（DIAG-V22-FORENSICS）
-- `stage8/` v2.4 构建/校验脚本 + turner-setup.sh + hybrid-services.rc（当前版）
-- `stage9/` v2.4 刷后诊断准备（两条分支的判读表）
-- `decrypt-stack/` turner 凭据链全量盘点
-- `skyward-analysis/` Skyward 适配全解 + OS4 服务布局审计
+- **注册三件套**：SM 的 VINTF 声明检查 NOP（F0 @0x9d04）+ 无重复的有效清单 +
+  拆分 binder 对 + liblogcapture 的 Accessor/trace 桩，缺一不可。
+- **监管进程模式**：init oneshot 退出会连带 SIGKILL 其拉起的子进程；
+  HAL 必须由永不退出的监管脚本 spawn（Skyward 的监督进程同理）。
+- **NDK 查找分化**：本 recovery 中 AServiceManager_checkService/getService 对全部服务
+  返回 null，waitForService 正常；vold 的解密轮询恰好用 checkService。

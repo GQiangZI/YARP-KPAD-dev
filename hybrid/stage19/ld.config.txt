@@ -1,0 +1,101 @@
+# Hybrid recovery linker configuration (v3.3).
+#
+# Until v3.1 this file did not exist in the merged ramdisk: init's
+# early-init copy to /linkerconfig/ld.config.txt failed, F0's copy
+# there is 0 bytes, and every process ran with NO namespace config.
+# v3.1 proved the config lands and is honored; its HAL deaths also
+# proved the ordering contract below.
+#
+# Environment contract for HAL processes (vendor/odm namespaces):
+#  * Binder pair comes from the TWRP payload (twrpbinder dir):
+#    payload libbinder.so + libbinder_ndk.so are one consistent
+#    SDK 36 pair, recovery-flavored (RECO parcel tag, matching our
+#    servicemanager), and the payload ndk exports
+#    AIBinder_Class_setTransactionCodeToFunctionNameMap@@
+#    LIBBINDER_NDK36, the one symbol the installed system's
+#    rkp/gatekeeper NDK libraries require. The stock ramdisk pair
+#    (SDK 35) lacks that symbol; the installed system's pair
+#    (SDK 37) speaks SYST parcels our servicemanager rejects and
+#    its ndk needs BBinder internals from its own libbinder, so
+#    neither stock pair nor a split pair can work.
+#  * Anti-shadowing: the merged ramdisk's /system/lib64 (72 libs)
+#    must not shadow the installed system's libraries inside a HAL
+#    closure (v3.1: ramdisk libc++ shadowed the system's and the
+#    touch HAL died on a libc++ symbol its libui needed). It sits
+#    LAST in the HAL namespaces, as a straggler fallback only.
+# Mount layout: /system = recovery ramdisk, /mnt/system = the
+# installed HyperOS, /vendor and /odm = installed vendor/odm.
+
+dir.recovery = /system/bin
+dir.vendor = /vendor/bin
+dir.odm = /odm/bin
+dir.default = /
+
+# --- recovery's own processes: unchanged from the official YARP
+# --- config (single flat namespace over the ramdisk).
+[recovery]
+namespace.default.isolated = false
+namespace.default.search.paths = /system/${LIB}
+namespace.default.asan.search.paths = /data/asan/system/${LIB}
+namespace.default.asan.search.paths += /system/${LIB}
+namespace.default.hwasan.search.paths = /system/${LIB}/hwasan
+namespace.default.hwasan.search.paths += /system/${LIB}
+
+[default]
+namespace.default.isolated = false
+namespace.default.search.paths = /system/${LIB}
+namespace.default.search.paths += /vendor/${LIB}
+namespace.default.search.paths += /odm/${LIB}
+
+# --- vendor binaries (keymint, gatekeeper, tee-supplicant class).
+# Resolution order is the environment contract:
+#   sysndk            -> libbinder_ndk.so from the installed system
+#   /system/${LIB}    -> ramdisk base libs (libbinder.so = RECO)
+#   twrp16            -> payload-only libs (ICU family)
+#   /mnt/system/...   -> installed system libs (rkp, keymint support)
+#   APEX dirs         -> staged APEX libraries (ICU, runtime)
+#   vendor/odm        -> installed vendor libraries
+[vendor]
+namespace.default.isolated = false
+namespace.default.search.paths = /system/etc/hybrid/twrpbinder
+namespace.default.search.paths += /mnt/system/system/${LIB}
+namespace.default.search.paths += /mnt/system/system/${LIB}/bootstrap
+namespace.default.search.paths += /apex/com.android.i18n/${LIB}
+namespace.default.search.paths += /apex/com.android.runtime/${LIB}
+namespace.default.search.paths += /apex/com.android.runtime/${LIB}/bionic
+namespace.default.search.paths += /vendor/${LIB}
+namespace.default.search.paths += /odm/${LIB}
+namespace.default.search.paths += /mnt/system_ext/${LIB}
+namespace.default.search.paths += /system/${LIB}/twrp16
+namespace.default.search.paths += /system/${LIB}
+namespace.default.permitted.paths = /system/etc/hybrid/twrpbinder
+namespace.default.permitted.paths += /system/${LIB}
+namespace.default.permitted.paths += /mnt/system/system/${LIB}
+namespace.default.permitted.paths += /apex
+namespace.default.permitted.paths += /vendor/${LIB}
+namespace.default.permitted.paths += /odm/${LIB}
+namespace.default.permitted.paths += /mnt/system_ext/${LIB}
+
+# --- odm binaries (Xiaomi touchfeature HAL).
+# twrp16 first: the payload's ICU (libandroidicu/libicuuc/libicui18n)
+# is the partner the installed system's libxml2.so needs; in stock
+# HyperOS it comes from the com.android.i18n APEX.
+[odm]
+namespace.default.isolated = false
+namespace.default.search.paths = /system/etc/hybrid/twrpbinder
+namespace.default.search.paths += /mnt/system/system/${LIB}
+namespace.default.search.paths += /mnt/system/system/${LIB}/bootstrap
+namespace.default.search.paths += /apex/com.android.i18n/${LIB}
+namespace.default.search.paths += /apex/com.android.runtime/${LIB}
+namespace.default.search.paths += /apex/com.android.runtime/${LIB}/bionic
+namespace.default.search.paths += /odm/${LIB}
+namespace.default.search.paths += /vendor/${LIB}
+namespace.default.search.paths += /mnt/system_ext/${LIB}
+namespace.default.search.paths += /system/${LIB}/twrp16
+namespace.default.search.paths += /system/${LIB}
+namespace.default.permitted.paths = /system/${LIB}
+namespace.default.permitted.paths += /mnt/system/system/${LIB}
+namespace.default.permitted.paths += /apex
+namespace.default.permitted.paths += /odm/${LIB}
+namespace.default.permitted.paths += /vendor/${LIB}
+namespace.default.permitted.paths += /mnt/system_ext/${LIB}
