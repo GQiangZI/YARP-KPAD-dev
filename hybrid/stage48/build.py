@@ -245,30 +245,8 @@ def build(base, bridge, output, release=V335):
     require(not any(e["name"] in merged for e in additions), "bridge already exists")
     packed = [pack_cpio(entries[0], {rc_name: new_rc}, []),
               pack_cpio(entries[1], {}, additions)]
-    fragments = [compress(a) for a in packed]
-    header = bytearray(data[:4096])
-    struct.pack_into("<I", header, 24, sum(map(len, fragments)))
-    table = bytearray(data[info["table"]:info["table"] + info["table_size"]])
-    for i, fragment in enumerate(fragments):
-        struct.pack_into("<II", table, 108 * i, len(fragment), sum(map(len, fragments[:i])))
-    raw = bytearray(header + b"".join(fragments))
-    raw += b"\0" * (align(len(raw)) - len(raw))
-    raw += data[info["dtb"]:info["table"]]
-    raw += table
-    vb_offset = align(len(raw))
-    require(vb_offset + 512 + 64 <= SIZE, "image does not fit; no output written")
-    vb = bytearray(avb["vbmeta"])
-    struct.pack_into(">Q", vb, avb["descriptor"] + 16, len(raw))
-    h = avb["salt_at"] + len(avb["salt"])
-    vb[h:h + 32] = sha256(avb["salt"] + raw).digest()
-    result = bytearray(SIZE)
-    result[:len(raw)] = raw
-    result[vb_offset:vb_offset + 512] = vb
-    result[-64:] = b"AVBf" + struct.pack(">IIQQQ", 1, 0, len(raw), vb_offset, 512) + b"\0" * 28
-    result = bytes(result)
+    result = repack_image(data, info, avb, [compress(a) for a in packed])
     fresh, checked = layout(result), verify_avb(result)
-    require(result[fresh["dtb"]:fresh["table"]] == data[info["dtb"]:info["table"]],
-            "DTB region changed")
     changes = []
     for i in range(2):
         new_map = {e["name"]: e for e in cpio_entries(decompress(fresh["fragments"][i]))}
@@ -290,7 +268,7 @@ def build(base, bridge, output, release=V335):
                   avb_flags=checked["flags"], dtb_region_unchanged=True,
                   recovery_binary_unchanged=True, binder_libraries_unchanged=True,
                   existing_f1_entries_byte_identical=True, changes=changes,
-                  partition_headroom=SIZE - vb_offset - 512 - 64)
+                  partition_headroom=SIZE - fresh["vb_off"] - 512 - 64)
     if binder_exports:
         report["recovery_binder_exports_verified"] = binder_exports
         report["lookup_protocol"] = "Legacy CHECK_SERVICE (2) fallback after a null modern lookup"
@@ -298,6 +276,34 @@ def build(base, bridge, output, release=V335):
     output.write_bytes(result)
     output.with_suffix(".verification.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
+
+
+def repack_image(data, info, avb, fragments):
+    header = bytearray(data[:4096])
+    struct.pack_into("<I", header, 24, sum(map(len, fragments)))
+    table = bytearray(data[info["table"]:info["table"] + info["table_size"]])
+    for i, fragment in enumerate(fragments):
+        struct.pack_into("<II", table, 108 * i, len(fragment), sum(map(len, fragments[:i])))
+    raw = bytearray(header + b"".join(fragments))
+    raw += b"\0" * (align(len(raw)) - len(raw))
+    raw += data[info["dtb"]:info["table"]]
+    raw += table
+    vb_offset = align(len(raw))
+    require(vb_offset + 512 + 64 <= SIZE, "image does not fit; no output written")
+    vb = bytearray(avb["vbmeta"])
+    struct.pack_into(">Q", vb, avb["descriptor"] + 16, len(raw))
+    h = avb["salt_at"] + len(avb["salt"])
+    vb[h:h + 32] = sha256(avb["salt"] + raw).digest()
+    result = bytearray(SIZE)
+    result[:len(raw)] = raw
+    result[vb_offset:vb_offset + 512] = vb
+    result[-64:] = b"AVBf" + struct.pack(">IIQQQ", 1, 0, len(raw), vb_offset, 512) + b"\0" * 28
+    result = bytes(result)
+    fresh = layout(result)
+    verify_avb(result)
+    require(result[fresh["dtb"]:fresh["table"]] == data[info["dtb"]:info["table"]],
+            "DTB region changed")
+    return result
 
 
 if __name__ == "__main__":
