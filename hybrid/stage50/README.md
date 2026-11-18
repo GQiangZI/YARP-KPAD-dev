@@ -33,7 +33,15 @@ python3 hybrid/stage48/build.py \
 构建器核对 v3.30 输入的完整 SHA256、新增库的直接依赖和已加载库所需导出，
 校验 ramdisk 文件差异、DTB、vendor_boot 分区大小和 AVB 哈希。相较 v3.35，
 归档条目只有解密桥接库和诊断脚本不同。主机测试覆盖迟注册、服务消失、权限与
-传输失败、句柄引用与 Parcel 清理。仍需使用 Redmi K Pad 实机确认数据挂载。
+传输失败、句柄引用与 Parcel 清理。
+
+## 实机结果
+
+2026-11-18 实机日志确认旧协议在 recovery 主进程生效。启动 7.252 秒时得到
+keystore2 句柄，7.518 秒时 `/dev/block/dm-12` 挂载为 `/data`，Recovery 读到 234 GB。
+`twrp.user.0.decrypt=0` 已写入，`/data/user/0` 绑定挂载也出现。用户 0 的 DE 初始化
+仍以 `fscrypt_init_user0 returned fail` 退出，凭据加密的文件还未验证可读。
+后续用 [stage51](../stage51/README.md) 记录失败目录或 fscrypt ioctl。
 
 ## 实机验证
 
