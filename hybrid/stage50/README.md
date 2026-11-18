@@ -45,6 +45,9 @@ python3 hybrid/stage48/build.py \
 sh /system/bin/turner-crypto-status.sh
 ```
 
+首批 v3.36 镜像把日志包设为仅 root 可读。用该镜像时，生成后在平板终端执行
+`chmod 644 /tmp/turner-v336-logs.tar`。
+
 在手机 Termux 拉取日志。
 
 ```sh

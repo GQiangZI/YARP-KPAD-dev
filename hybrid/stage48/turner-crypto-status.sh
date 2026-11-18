@@ -1,6 +1,7 @@
 #!/system/bin/sh
 # Read-only diagnostic collection; does not touch credentials or key blobs.
 OUT=/tmp/turner-crypto-status.txt
+ARCHIVE=/tmp/turner-v335-logs.tar
 {
     echo 'turner crypto diagnostic v3.35'
     date
@@ -43,6 +44,10 @@ for item in /tmp/turner-crypto-status.txt /tmp/turner-crypto.log \
     /system/etc/recovery.fstab; do
     [ -f "$item" ] && FILES="$FILES ${item#/}"
 done
-tar -cf /tmp/turner-v335-logs.tar -C / $FILES
-chmod 0600 /tmp/turner-v335-logs.tar
-echo 'Saved /tmp/turner-v335-logs.tar'
+# Recovery runs this script as root. The ADB sync service may run as shell.
+if tar -cf "$ARCHIVE" -C / $FILES && chmod 0644 "$ARCHIVE"; then
+    printf 'Saved %s\n' "$ARCHIVE"
+else
+    printf 'Failed to export %s\n' "$ARCHIVE" >&2
+    exit 1
+fi
