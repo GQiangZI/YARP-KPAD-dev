@@ -15,10 +15,7 @@ if [ "$(id -u)" != 0 ]; then
 fi
 TB=/system/bin/toybox
 if [ ! -x "$TB" ]; then echo 'Missing /system/bin/toybox'; exit 1; fi
-if ! "$TB" timeout --help >/dev/null 2>&1; then
-    echo 'Missing toybox timeout applet; probe was not started.'
-    exit 1
-fi
+echo 'Turner Binder probe v2'
 WORK=/tmp/turner-binder-probe
 mkdir -p "$WORK" || exit 1
 "$TB" base64 -d > "$WORK/libbinderprobe.so" <<'TURNER_PROBE_ELF_BASE64'
@@ -44,12 +41,31 @@ run_probe() {
     label=$1
     libs=$2
     preload=$3
+    probe_log="$WORK/$label.txt"
     echo "Running $label (8 second limit)..."
-    "$TB" timeout 8 "$TB" env TURNER_BINDER_PROBE=1 \
-        "LD_LIBRARY_PATH=$libs" "LD_PRELOAD=$preload" \
-        "$TB" true > "$WORK/$label.txt" 2>&1
+    TURNER_BINDER_PROBE=1 LD_LIBRARY_PATH="$libs" LD_PRELOAD="$preload" \
+        "$TB" true > "$probe_log" 2>&1 &
+    probe_pid=$!
+    elapsed=0
+    # Recovery builds can omit the timeout applet or return nonzero for help.
+    # Watch only this child and retain its output if the Binder call stalls.
+    while kill -0 "$probe_pid" 2>/dev/null; do
+        if [ "$elapsed" -eq 8 ]; then
+            if kill -KILL "$probe_pid" 2>/dev/null; then
+                echo 'probe timed out after 8 seconds' >> "$probe_log"
+            fi
+            break
+        fi
+        if ! sleep 1; then
+            kill -KILL "$probe_pid" 2>/dev/null
+            echo 'probe stopped: watchdog sleep failed' >> "$probe_log"
+            break
+        fi
+        elapsed=$((elapsed + 1))
+    done
+    wait "$probe_pid" 2>/dev/null
     rc=$?
-    echo "probe process rc=$rc" >> "$WORK/$label.txt"
+    echo "probe process rc=$rc" >> "$probe_log"
 }
 run_probe recovery \
     /system/lib64/twrp16:/system/lib64 \

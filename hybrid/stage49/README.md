@@ -2,7 +2,8 @@
 
 本阶段交付 `turner-binder-probe.sh`，在当前 recovery 内启动三个独立的短进程。
 无需重新刷镜像。探针只查询服务，不调用 KeyMint 密钥操作、不注册服务、不重启
-recovery/HAL，不改属性、分区、密码或密钥。每组进程限制 8 秒。
+recovery/HAL，不改属性、分区、密码或密钥。v2 由 shell 监管子进程，
+每组约 8 秒后终止并保留已有输出。启动时会显示 `Turner Binder probe v2`。
 
 ## 实机证据
 

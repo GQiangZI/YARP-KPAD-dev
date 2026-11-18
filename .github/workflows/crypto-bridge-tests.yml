@@ -82,6 +82,7 @@ jobs:
           python3 hybrid/stage49/package_probe.py \
             --library build/stage49/libbinderprobe.so --output build/turner-binder-probe.sh
           sh -n build/turner-binder-probe.sh
+          python3 tests/stage49/test_probe_wrapper.py build/turner-binder-probe.sh
       - uses: actions/upload-artifact@v4
         with:
           name: turner-binder-protocol-probe
