@@ -5,11 +5,15 @@ on:
     paths:
       - hybrid/stage48/**
       - tests/stage48/**
+      - hybrid/stage49/**
+      - tests/stage49/**
       - .github/workflows/crypto-bridge-tests.yml
   pull_request:
     paths:
       - hybrid/stage48/**
       - tests/stage48/**
+      - hybrid/stage49/**
+      - tests/stage49/**
       - .github/workflows/crypto-bridge-tests.yml
   workflow_dispatch:
 
@@ -51,4 +55,35 @@ jobs:
         with:
           name: turner-v335-crypto-bridge-arm64
           path: build/libturner_crypto.so
+          retention-days: 14
+  binder-probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and execute ARM64 result adapters
+        run: |
+          python3 -m pip install ziglang==0.17.1 pyelftools unicorn==2.1.4
+          mkdir -p build/stage49
+          python3 -m ziglang cc -target aarch64-linux-android -Os -ffreestanding \
+            -fno-stack-protector -nostdlib -shared -fPIC -s -Wall -Wextra -Werror \
+            -Wl,-z,max-page-size=4096 -Wl,-soname,libbinderprobe.so \
+            hybrid/stage49/binder_probe.c -o build/stage49/libbinderprobe.so
+          python3 -m ziglang cc -target aarch64-linux-android -Os -ffreestanding \
+            -fno-stack-protector -nostdlib -shared -fPIC -s -Wall -Wextra -Werror \
+            -Wl,-z,max-page-size=4096 -DTURNER_BINDER_ABI_TEST \
+            hybrid/stage49/binder_probe.c -o build/stage49/libbinderprobe-abi-test.so
+          python3 tests/stage49/test_arm64_sret.py \
+            build/stage49/libbinderprobe.so build/stage49/libbinderprobe-abi-test.so
+      - name: Package read-only recovery probe
+        run: |
+          python3 hybrid/stage49/package_probe.py \
+            --library build/stage49/libbinderprobe.so --output build/turner-binder-probe.sh
+          sh -n build/turner-binder-probe.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turner-binder-protocol-probe
+          path: build/turner-binder-probe.sh
           retention-days: 14
