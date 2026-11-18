@@ -14,6 +14,10 @@ DE 密钥后写入 `twrp.user.0.decrypt=0`，`prepare_special_dirs()` 创建 `/d
 `sh /tmp/turner-fbe-trace.sh`。出现 `FBE trace attached` 后，在 45 秒内点一次此前失败
 的解密按钮。约 45 秒后输出 `/tmp/turner-fbe-trace-logs.tar`，可通过 ADB 拉取。
 
+实机跟踪确认四个 DE 目录的策略设置都返回成功，紧接着子进程以状态 1 退出。
+v3.36 ramdisk 缺少其所需的 `vold_prepare_subdirs`。后续用 [已有 v3.36 的临时测试](../stage52/README.md)
+记录辅助程序的退出状态，实机跟踪包已足够定位。
+
 ## 构建与许可
 
 使用未修改的 strace 6.13 源码。对应源码为 [Debian 原始 tarball](https://deb.debian.org/debian/pool/main/s/strace/strace_6.13+ds.orig.tar.xz)，

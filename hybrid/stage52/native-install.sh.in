@@ -1,0 +1,40 @@
+#!/system/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Temporary native helper for the Turner v3.36 Recovery RAM filesystem.
+
+target=/system/bin/vold_prepare_subdirs
+sha=@SHA256@
+if [ "$(id -u)" != 0 ]; then
+    echo 'Run this in the Recovery terminal.'
+    exit 1
+fi
+case "$(/system/bin/toybox stat -f -c '%t' /system/bin)" in
+    1021994|858458f6) ;;
+    *) echo '/system/bin is not on the Recovery RAM filesystem.'; exit 1 ;;
+esac
+if [ -e "$target" ] || [ -L "$target" ]; then
+    printf '%s already exists.\n' "$target"
+    exit 1
+fi
+stage=$(mktemp "$target.XXXXXX") || exit 1
+trap 'rm -f "$stage"' EXIT
+if ! {
+@PAYLOAD@
+} | /system/bin/toybox base64 -d > "$stage"; then
+    echo 'Unable to unpack the prepare helper.'
+    exit 1
+fi
+digest=$(/system/bin/toybox sha256sum "$stage")
+if [ "${digest%% *}" != "$sha" ]; then
+    echo 'Prepare helper checksum mismatch.'
+    exit 1
+fi
+chmod 0755 "$stage" || exit 1
+if ! LD_LIBRARY_PATH=/system/lib64/twrp16:/system/lib64 \
+    LD_PRELOAD=/system/etc/hybrid/libturner_crypto.so "$stage" --check; then
+    echo 'Native helper startup failed.'
+    exit 1
+fi
+/system/bin/toybox ln -T "$stage" "$target" || exit 1
+echo 'Helper ready. Return to Recovery and tap Decrypt once.'
+echo 'Result will be recorded in /tmp/turner-vold-prepare.log.'
