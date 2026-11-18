@@ -19,6 +19,8 @@ BASE_SHA = "aa0606d8d09d40f9988c8cd92b5c561e47360e6369bbca0f620b8730b219ae2d"
 SIZE = 67108864
 MAGIC = bytes.fromhex("02214c18")
 HERE = Path(__file__).resolve().parent
+V335 = "v3.35-CRYPTO-BRIDGE-TEST"
+V336 = "v3.36-CRYPTO-LEGACY-TEST"
 
 
 def require(condition, message):
@@ -173,13 +175,21 @@ def audit_elf(data):
                   if s["st_shndx"] == "SHN_UNDEF" and s.name)
 
 
-def build(base, bridge, output):
+def elf_exports(data):
+    elf = ELFFile(BytesIO(data))
+    return {s.name for s in elf.get_section_by_name(".dynsym").iter_symbols()
+            if s["st_shndx"] != "SHN_UNDEF"}
+
+
+def build(base, bridge, output, release=V335):
     require(base.resolve() != output.resolve(), "output must not overwrite base")
     data = base.read_bytes()
     require(digest(data) == BASE_SHA, "base is not the exact tested v3.30")
     info, avb = layout(data), verify_avb(data)
     shim = bridge.read_bytes()
     imports = audit_elf(shim)
+    tag = release.split("-", 1)[0]
+    require(f"TURNER-CRYPTO {tag}:".encode() in shim, "bridge version differs from image release")
     archives = [decompress(f) for f in info["fragments"]]
     entries = [cpio_entries(a) for a in archives]
     maps = [{e["name"]: e for e in es} for es in entries]
@@ -191,10 +201,29 @@ def build(base, bridge, output):
         if merged[name]["fields"][1] & 0o170000 == 0o120000:
             target = body.decode().lstrip("/")
             body = merged[target]["body"]
-        elf = ELFFile(BytesIO(body))
-        exported.update(s.name for s in elf.get_section_by_name(".dynsym").iter_symbols()
-                        if s["st_shndx"] != "SHN_UNDEF")
+        exported.update(elf_exports(body))
     require(set(imports) <= exported, "unresolved bridge imports: " + str(set(imports) - exported))
+    binder_exports = {}
+    if release == V336:
+        checks = {
+            "libbinder.so": {
+                "_ZN7android12ProcessState4selfEv",
+                "_ZN7android12ProcessState23getStrongProxyForHandleEi",
+            },
+            "libbinder_ndk.so": {
+                "_Z27AIBinder_fromPlatformBinderRKN7android2spINS_7IBinderEEE",
+                "AIBinder_Class_define", "AIBinder_associateClass", "AIBinder_decStrong",
+                "AIBinder_prepareTransaction", "AIBinder_transact", "AParcel_writeString",
+                "AParcel_readStatusHeader", "AParcel_readStrongBinder", "AParcel_delete",
+                "AStatus_isOk", "AStatus_delete", "AStatus_getStatus", "AStatus_getExceptionCode",
+                "AServiceManager_checkService",
+            },
+        }
+        for lib, required in checks.items():
+            path = "system/lib64/twrp16/" + lib
+            missing = required - elf_exports(merged[path]["body"])
+            require(not missing, f"missing Binder exports in {path}: {sorted(missing)}")
+            binder_exports[path] = sorted(required)
 
     rc_name = "system/etc/init/hw/init.rc"
     old_rc = maps[0][rc_name]["body"]
@@ -206,10 +235,12 @@ def build(base, bridge, output):
     require(old_rc.count(marker) == 1, "recovery service differs from v3.30")
     new_rc = old_rc.replace(marker, marker +
                b"    setenv LD_PRELOAD /system/etc/hybrid/libturner_crypto.so\n")
+    status_script = (HERE / "turner-crypto-status.sh").read_bytes()
+    if release == V336:
+        status_script = status_script.replace(b"v3.35", b"v3.36").replace(b"v335", b"v336")
     additions = [
         new_entry("system/etc/hybrid/libturner_crypto.so", shim, 0o100644, 900001),
-        new_entry("system/bin/turner-crypto-status.sh",
-                  (HERE / "turner-crypto-status.sh").read_bytes(), 0o100755, 900002),
+        new_entry("system/bin/turner-crypto-status.sh", status_script, 0o100755, 900002),
     ]
     require(not any(e["name"] in merged for e in additions), "bridge already exists")
     packed = [pack_cpio(entries[0], {rc_name: new_rc}, []),
@@ -252,7 +283,7 @@ def build(base, bridge, output):
             require(i == 1 and name in {e["name"] for e in additions}, "unexpected added entry")
             changes.append(dict(fragment=i, path=name, action="added"))
     require(len(changes) == 3, "unexpected delta count")
-    report = dict(version="v3.35-CRYPTO-BRIDGE-TEST", status="NOT_DEVICE_TESTED",
+    report = dict(version=release, status="NOT_DEVICE_TESTED",
                   base_sha256=BASE_SHA, image_sha256=digest(result), size=len(result),
                   bridge_sha256=digest(shim), bridge_imports=imports,
                   avb_hash_verified=True, avb_authentication="NONE (same as input)",
@@ -260,6 +291,9 @@ def build(base, bridge, output):
                   recovery_binary_unchanged=True, binder_libraries_unchanged=True,
                   existing_f1_entries_byte_identical=True, changes=changes,
                   partition_headroom=SIZE - vb_offset - 512 - 64)
+    if binder_exports:
+        report["recovery_binder_exports_verified"] = binder_exports
+        report["lookup_protocol"] = "Legacy CHECK_SERVICE (2) fallback after a null modern lookup"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(result)
     output.with_suffix(".verification.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -271,5 +305,6 @@ if __name__ == "__main__":
     p.add_argument("--base", type=Path, required=True)
     p.add_argument("--bridge", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--release", choices=(V335, V336), default=V335)
     args = p.parse_args()
-    build(args.base, args.bridge, args.output)
+    build(args.base, args.bridge, args.output, args.release)

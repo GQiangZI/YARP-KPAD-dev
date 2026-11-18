@@ -2,8 +2,9 @@
 
 本阶段交付 `turner-binder-probe.sh`，在当前 recovery 内启动三个独立的短进程。
 无需重新刷镜像。探针只查询服务，不调用 KeyMint 密钥操作、不注册服务、不重启
-recovery/HAL，不改属性、分区、密码或密钥。v2 由 shell 监管子进程，
-每组约 8 秒后终止并保留已有输出。启动时会显示 `Turner Binder probe v2`。
+recovery/HAL，不改属性、分区、密码或密钥。每组查询至多等待约 8 秒，并保留已有输出。
+v3 通过管道解码探针，适用于 `/data` 未挂载且 shell 的临时目录不可用的情况。
+启动时会显示 `Turner Binder probe v3`。
 
 ## 实机证据
 
@@ -56,9 +57,10 @@ manager，通过本库导出的 `AIBinder_fromPlatformBinder` 转为本库的 ND
 Parcel 或混用另一个库的 AIBinder 对象。C++ sp 返回值通过 AArch64 x8 适配器接收，
 不依赖对象字段偏移、vtable 槽、裸内存补丁或非公开函数地址。
 
-适配器的实际 ARM64 指令有 Unicorn 寄存器测试；这不等于 Android Binder 实机通过。
-只有在 recovery 库组里“modern=null，legacy rc=0 且 binder 非空”才确认此路径适合
-下一版修复。返回非空还不是 data 解密成功，后续仍需验证实际密钥操作和挂载。
+适配器的 ARM64 指令通过了 Unicorn 寄存器测试。实机报告中，split 组使用原厂
+libbinder 和 twrp16 NDK 库，现代查询和旧事务 2 均返回了 keystore2、KeyMint 和
+Gatekeeper 的句柄。recovery 和 stock 两组只有退出码，缺少实际查询结果。
+[v3.36 测试版](../stage50/README.md) 在 recovery 主进程验证同一条旧协议路径。
 
 ## 编译与运行
 

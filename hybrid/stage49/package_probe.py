@@ -15,14 +15,17 @@ if [ "$(id -u)" != 0 ]; then
 fi
 TB=/system/bin/toybox
 if [ ! -x "$TB" ]; then echo 'Missing /system/bin/toybox'; exit 1; fi
-echo 'Turner Binder probe v2'
+echo 'Turner Binder probe v3'
 WORK=/tmp/turner-binder-probe
 mkdir -p "$WORK" || exit 1
-"$TB" base64 -d > "$WORK/libbinderprobe.so" <<'TURNER_PROBE_ELF_BASE64'
+'''
+DECODE = r'''if ! printf '%s\n' '@PAYLOAD@' |
+    "$TB" base64 -d > "$WORK/libbinderprobe.so"; then
+    echo 'Probe decode failed'
+    exit 1
+fi
 '''
 END = r'''
-TURNER_PROBE_ELF_BASE64
-if [ $? != 0 ]; then echo 'Probe decode failed'; exit 1; fi
 EXPECTED='@SHA@'
 ACTUAL=$("$TB" sha256sum "$WORK/libbinderprobe.so")
 ACTUAL=${ACTUAL%% *}
@@ -94,7 +97,9 @@ def main():
     if data[:6] != b"\x7fELF\x02\x01" or int.from_bytes(data[18:20], "little") != 183:
         raise ValueError("Expected little-endian ARM64 ELF64")
     encoded = "\n".join(textwrap.wrap(base64.b64encode(data).decode(), 76))
-    script = START + encoded + END.replace("@SHA@", sha256(data).hexdigest())
+    # Android's mksh writes here-documents to TMPDIR, which can point at
+    # /data/local/tmp while /data is unmounted. A pipe needs no such file.
+    script = START + DECODE.replace("@PAYLOAD@", encoded) + END.replace("@SHA@", sha256(data).hexdigest())
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(script)
     print(args.output, "library_sha256", sha256(data).hexdigest())

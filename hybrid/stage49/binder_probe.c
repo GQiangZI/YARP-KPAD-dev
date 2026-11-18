@@ -1,16 +1,21 @@
 /* SPDX-License-Identifier: Apache-2.0
- * Read-only, isolated-process probe. No service registration or key operations.
- * Compare the modern ServiceManager API with legacy CHECK_SERVICE transaction 2.
+ * Read-only comparison and recovery fallback for legacy CHECK_SERVICE (2).
  */
 #include <stddef.h>
 #include <stdarg.h>
 extern void *dlopen(const char *, int);
 extern void *dlsym(void *, const char *);
 extern char *dlerror(void);
-extern char *getenv(const char *);
 extern int vsnprintf(char *, unsigned long, const char *, va_list);
+#ifdef TURNER_BINDER_BRIDGE
+extern int pthread_once(int *, void (*)(void));
+__attribute__((visibility("hidden")))
+void turner_crypto_binder_log(const char *message);
+#else
+extern char *getenv(const char *);
 extern long write(int, const void *, unsigned long);
 extern int getpid(void);
+#endif
 struct dl_info { const char *file; void *base; const char *symbol; void *address; };
 extern int dladdr(const void *, struct dl_info *);
 
@@ -19,21 +24,27 @@ static void say(const char *format, ...) {
     va_list ap; va_start(ap, format);
     int n = vsnprintf(buffer, sizeof(buffer), format, ap); va_end(ap);
     if (n < 0) return;
+#ifdef TURNER_BINDER_BRIDGE
+    turner_crypto_binder_log(buffer);
+#else
     unsigned long count = (unsigned)n < sizeof(buffer) - 1 ? (unsigned)n : sizeof(buffer) - 2;
     buffer[count++] = '\n';
     (void)write(1, buffer, count);
+#endif
 }
+#ifndef TURNER_BINDER_BRIDGE
 static int equal(const char *a, const char *b) {
     if (!a || !b) return 0;
     while (*a && *a == *b) { ++a; ++b; }
     return *a == *b;
 }
+#endif
 static int size_of(const char *s) { int n = 0; while (s[n]) ++n; return n; }
 
 /* AArch64 AAPCS64: nontrivial C++ sp<T> results use an indirect result in
  * x8, even though sp<T> contains one pointer. Do not declare them as C returns.
  * The callee writes an owned sp into our one-pointer slot. Its strong reference
- * is intentionally retained for the lifetime of this short-lived probe.
+ * is intentionally retained for the lifetime of the process.
  */
 #ifdef __aarch64__
 __attribute__((naked)) void turner_sret0(void *fn __attribute__((unused)),
@@ -51,6 +62,13 @@ __attribute__((naked)) void turner_abi_echo(void) {
     __asm__ volatile("stp x0, x1, [x8]\n ret\n");
 }
 #endif
+#elif defined(TURNER_BINDER_BRIDGE_TEST)
+static void turner_sret0(void *fn, void *out) {
+    ((void (*)(void *))fn)(out);
+}
+static void turner_sret2(void *fn, void *out, void *self, long arg) {
+    ((void (*)(void *, void *, long))fn)(out, self, arg);
+}
 #else
 #error This probe is specific to ARM64 turner
 #endif
@@ -62,6 +80,7 @@ typedef int (*write_string_fn)(void *, const char *, int);
 typedef int (*transact_fn)(void *, unsigned, void **, void **, unsigned);
 typedef int (*read_object_fn)(const void *, void **);
 typedef _Bool (*bool_fn)(const void *);
+typedef int (*status_int_fn)(const void *);
 
 struct api {
     void *binder_handle, *ndk_handle;
@@ -121,53 +140,64 @@ static void *legacy_context(struct api *a) {
     return context;
 }
 
-static void *legacy_check(struct api *a, void *context, const char *name) {
+struct lookup_result {
+    void *binder;
+    const char *phase;
+    int rc;
+    int exception;
+};
+
+static struct lookup_result legacy_check(struct api *a, void *context, const char *name) {
     void *in = 0, *reply = 0, *status = 0, *binder = 0;
     int rc = a->prepare(context, &in);
+    int exception = 0;
     const char *phase = "prepare";
-    if (rc) goto done;
+    if (rc || !in) { if (!rc) rc = -22; goto done; }
     phase = "writeString";
     rc = a->write_string(in, name, size_of(name));
     if (rc) goto done;
     phase = "transact(code=2)";
     rc = a->transact(context, 2, &in, &reply, 0);
-    if (rc) goto done;
+    if (rc || !reply) { if (!rc) rc = -22; goto done; }
     phase = "readStatusHeader";
     rc = a->read_status(reply, &status);
-    if (rc || !status) goto done;
+    if (rc || !status) { if (!rc) rc = -22; goto done; }
     if (!a->status_ok(status)) {
-        typedef int (*status_int_fn)(const void *);
-        typedef const char *(*message_fn)(const void *);
         status_int_fn ex = (status_int_fn)dlsym(a->ndk_handle, "AStatus_getExceptionCode");
         status_int_fn transport = (status_int_fn)dlsym(a->ndk_handle, "AStatus_getStatus");
-        message_fn message = (message_fn)dlsym(a->ndk_handle, "AStatus_getMessage");
-        say("legacy status exception=%d transport=%d message=%s",
-            ex ? ex(status) : -999, transport ? transport(status) : -999,
-            message ? message(status) : "?");
-        rc = -1; goto done;
+        exception = ex ? ex(status) : -1;
+        rc = transport ? transport(status) : -1;
+        if (!rc) rc = -1;
+        goto done;
     }
     phase = "readStrongBinder";
     rc = a->read_binder(reply, &binder);
 done:
-    say("legacy check %s phase=%s rc=%d binder=%p", name, phase, rc, binder);
     if (status) a->status_delete(status);
     if (reply) a->parcel_delete(reply);
     if (in) a->parcel_delete(in);
     if (rc && binder) { a->dec(binder); binder = 0; }
-    return binder;
+    return (struct lookup_result){binder, phase, rc, exception};
 }
 
-static int load_api(struct api *a) {
-    a->binder_handle = dlopen("libbinder.so", 2);
+static void report_lookup(const char *name, struct lookup_result result) {
+    say("legacy check %s phase=%s rc=%d exception=%d binder=%p",
+        name, result.phase, result.rc, result.exception, result.binder);
+}
+
+static int load_api(struct api *a, int dl_flags) {
+    a->binder_handle = dlopen("libbinder.so", dl_flags);
     if (!a->binder_handle) { say("dlopen libbinder failed: %s", dlerror()); return 0; }
-    a->ndk_handle = dlopen("libbinder_ndk.so", 2);
+    a->ndk_handle = dlopen("libbinder_ndk.so", dl_flags);
     if (!a->ndk_handle) { say("dlopen libbinder_ndk failed: %s", dlerror()); return 0; }
 #define LOAD(field, type, symbol) do { \
     a->field = (type)dlsym(a->ndk_handle, symbol); \
     if (!a->field) { say("missing %s: %s", symbol, dlerror()); return 0; } \
 } while (0)
     LOAD(check, lookup_fn, "AServiceManager_checkService");
+#ifndef TURNER_BINDER_BRIDGE
     LOAD(wait, lookup_fn, "AServiceManager_waitForService");
+#endif
     LOAD(dec, release_fn, "AIBinder_decStrong");
     LOAD(parcel_delete, release_fn, "AParcel_delete");
     LOAD(status_delete, release_fn, "AStatus_delete");
@@ -179,16 +209,42 @@ static int load_api(struct api *a) {
     LOAD(status_ok, bool_fn, "AStatus_isOk");
 #undef LOAD
     where("AServiceManager_checkService", (void *)a->check);
+#ifndef TURNER_BINDER_BRIDGE
     where("AServiceManager_waitForService", (void *)a->wait);
+#endif
     return 1;
 }
 
+#ifdef TURNER_BINDER_BRIDGE
+static struct api recovery_api;
+static void *recovery_manager;
+static int manager_once;
+static unsigned reported_missing, reported_success, reported_error;
+
+static void init_recovery_manager(void) {
+    /* RTLD_NOW | RTLD_NOLOAD. Reuse the two libraries already selected by
+     * recovery and keep the ServiceManager class and proxy for this process. */
+    if (load_api(&recovery_api, 2 | 4)) recovery_manager = legacy_context(&recovery_api);
+    if (!recovery_manager) say("legacy ServiceManager client initialization failed");
+}
+
+__attribute__((visibility("hidden")))
+void *turner_legacy_binder_check(const char *name, unsigned slot) {
+    if (pthread_once(&manager_once, init_recovery_manager) || !recovery_manager) return 0;
+    struct lookup_result result = legacy_check(&recovery_api, recovery_manager, name);
+    unsigned *reported = result.rc ? &reported_error
+                                   : result.binder ? &reported_success : &reported_missing;
+    unsigned bit = 1u << slot;
+    if (!(__atomic_fetch_or(reported, bit, __ATOMIC_RELAXED) & bit)) report_lookup(name, result);
+    return result.binder;
+}
+#else
 __attribute__((constructor)) static void run(void) {
     if (!equal(getenv("TURNER_BINDER_PROBE"), "1")) return;
     say("turner Binder protocol probe v1, pid=%d", getpid());
     say("LD_LIBRARY_PATH=%s", getenv("LD_LIBRARY_PATH"));
     struct api a = {0};
-    if (!load_api(&a)) return;
+    if (!load_api(&a, 2)) return;
     const char *names[] = {
         "android.system.keystore2.IKeystoreService/default",
         "android.hardware.security.keymint.IKeyMintDevice/default",
@@ -201,7 +257,9 @@ __attribute__((constructor)) static void run(void) {
         say("modern check %s -> %p", names[i], binder);
         if (binder) a.dec(binder);
         if (context) {
-            binder = legacy_check(&a, context, names[i]);
+            struct lookup_result result = legacy_check(&a, context, names[i]);
+            report_lookup(names[i], result);
+            binder = result.binder;
             if (binder) a.dec(binder);
         }
     }
@@ -215,3 +273,4 @@ __attribute__((constructor)) static void run(void) {
     if (binder) a.dec(binder);
     say("probe finished");
 }
+#endif

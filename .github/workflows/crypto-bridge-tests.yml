@@ -7,6 +7,8 @@ on:
       - tests/stage48/**
       - hybrid/stage49/**
       - tests/stage49/**
+      - hybrid/stage50/**
+      - tests/stage50/**
       - .github/workflows/crypto-bridge-tests.yml
   pull_request:
     paths:
@@ -14,6 +16,8 @@ on:
       - tests/stage48/**
       - hybrid/stage49/**
       - tests/stage49/**
+      - hybrid/stage50/**
+      - tests/stage50/**
       - .github/workflows/crypto-bridge-tests.yml
   workflow_dispatch:
 
@@ -31,6 +35,7 @@ jobs:
       - name: Check host behavior and shell syntax
         run: |
           python3 tests/stage48/test_crypto_bridge.py
+          python3 tests/stage50/test_legacy_lookup.py
           sh -n hybrid/stage48/turner-crypto-status.sh
           python3 -m py_compile hybrid/stage48/build.py
       - name: Build device bridge
@@ -42,19 +47,32 @@ jobs:
             -Wall -Wextra -Werror -Wl,-z,max-page-size=4096 \
             -Wl,-soname,libturner_crypto.so \
             hybrid/stage48/libturner_crypto.c -o build/libturner_crypto.so
+          mkdir -p build/stage50
+          python3 -m ziglang cc -target aarch64-linux-android -mcpu=generic+lse \
+            -Os -ffreestanding -fno-stack-protector -nostdlib -shared -fPIC -s \
+            -Wall -Wextra -Werror -Wl,-z,max-page-size=4096 \
+            -Wl,-soname,libturner_crypto.so -DTURNER_BINDER_BRIDGE \
+            hybrid/stage48/libturner_crypto.c hybrid/stage49/binder_probe.c \
+            -o build/stage50/libturner_crypto.so
           python3 - <<'PY'
           import sys
           from pathlib import Path
           sys.path.insert(0, 'hybrid/stage48')
           from build import audit_elf
-          imports = audit_elf(Path('build/libturner_crypto.so').read_bytes())
-          assert not any(s.startswith('__aarch64_') for s in imports), imports
-          print('ARM64 exports and dependency audit passed:', imports)
+          for path in ('build/libturner_crypto.so', 'build/stage50/libturner_crypto.so'):
+              imports = audit_elf(Path(path).read_bytes())
+              assert not any(s.startswith('__aarch64_') for s in imports), imports
+              print('ARM64 exports and dependency audit passed:', path, imports)
           PY
       - uses: actions/upload-artifact@v4
         with:
           name: turner-v335-crypto-bridge-arm64
           path: build/libturner_crypto.so
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turner-v336-crypto-legacy-arm64
+          path: build/stage50/libturner_crypto.so
           retention-days: 14
   binder-probe:
     runs-on: ubuntu-24.04

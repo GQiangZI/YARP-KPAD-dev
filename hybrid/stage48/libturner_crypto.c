@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0
  * Recovery-only bridge for the verified turner v3.30 hybrid.
- * No C++ ABI, global Binder replacement, or service restart is involved.
+ * Binder compatibility stays in the recovery process using its own libraries.
  * Build without a sysroot; undefined functions resolve from recovery's bionic.
  */
 #include <stdarg.h>
@@ -38,7 +38,14 @@ extern FILE *fdopen(int, const char *);
 
 typedef int (*open_fn)(const char *, int, ...);
 typedef void *(*lookup_fn)(const char *);
+#ifdef TURNER_BINDER_BRIDGE
+#define TURNER_CRYPTO_VERSION "v3.36"
+__attribute__((visibility("hidden")))
+void *turner_legacy_binder_check(const char *name, unsigned slot);
+#else
+#define TURNER_CRYPTO_VERSION "v3.35"
 typedef void (*strong_fn)(void *);
+#endif
 static int enabled;
 
 static int eq(const char *a, const char *b) {
@@ -61,7 +68,7 @@ static void log_line(const char *s) {
     if (!real) return;
     const char *paths[] = {"/tmp/turner-crypto.log", "/dev/kmsg"};
     char b[700];
-    int n = snprintf(b, sizeof(b), "TURNER-CRYPTO v3.35: %s\n", s);
+    int n = snprintf(b, sizeof(b), "TURNER-CRYPTO " TURNER_CRYPTO_VERSION ": %s\n", s);
     if (n <= 0) return;
     size_t count = (size_t)n < sizeof(b) ? (size_t)n : sizeof(b) - 1;
     for (unsigned i = 0; i < 2; ++i) {
@@ -70,6 +77,11 @@ static void log_line(const char *s) {
         if (fd >= 0) { (void)write(fd, b, count); close(fd); }
     }
 }
+
+#ifdef TURNER_BINDER_BRIDGE
+__attribute__((visibility("hidden")))
+void turner_crypto_binder_log(const char *message) { log_line(message); }
+#endif
 
 /* Append only to field 5 of a /data row carrying the exact OS4 metadata key
  * directory. Preserve all installed-ROM flags, comments, other rows and any
@@ -225,6 +237,27 @@ static FILE *fopen_common(const char *symbol, const char *path, const char *mode
 FILE *fopen(const char *p, const char *m) { return fopen_common("fopen", p, m); }
 FILE *fopen64(const char *p, const char *m) { return fopen_common("fopen64", p, m); }
 
+#ifdef TURNER_BINDER_BRIDGE
+/* Vold keeps its existing polling deadline. The old ServiceManager protocol
+ * performs a single check per poll and returns immediately for a missing
+ * service. A returned Binder is owned by the caller, with no cached result. */
+void *AServiceManager_checkService(const char *name) {
+    lookup_fn real_check = (lookup_fn)dlsym(NEXT, "AServiceManager_checkService");
+    void *binder = real_check ? real_check(name) : 0;
+    if (binder || !enabled || !name) return binder;
+    static const char *const names[] = {
+        "android.system.keystore2.IKeystoreService/default",
+        "android.hardware.security.keymint.IKeyMintDevice/default",
+        "android.hardware.gatekeeper.IGatekeeper/default",
+        "android.hardware.security.secureclock.ISecureClock/default",
+        "android.hardware.security.sharedsecret.ISharedSecret/default",
+    };
+    for (unsigned i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
+        if (eq(name, names[i])) return turner_legacy_binder_check(name, i);
+    }
+    return 0;
+}
+#else
 struct service_slot { const char *name; void *binder; int state; };
 static struct service_slot slots[] = {
     {"android.system.keystore2.IKeystoreService/default", 0, 0},
@@ -284,6 +317,7 @@ void *AServiceManager_checkService(const char *name) {
     }
     return 0;
 }
+#endif
 
 __attribute__((constructor)) static void init_bridge(void) {
     char exe[256];
@@ -296,7 +330,13 @@ __attribute__((constructor)) static void init_bridge(void) {
 #ifdef TURNER_CRYPTO_TEST
     enabled = 1;
 #endif
-    if (enabled) log_line("loaded in recovery; bounded lookup bridge active");
+    if (enabled) {
+#ifdef TURNER_BINDER_BRIDGE
+        log_line("loaded in recovery; legacy ServiceManager lookup fallback active");
+#else
+        log_line("loaded in recovery; bounded lookup bridge active");
+#endif
+    }
 }
 
 #ifdef TURNER_CRYPTO_TEST

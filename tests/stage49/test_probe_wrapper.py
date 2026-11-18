@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the generated shell wrapper with a Recovery lacking toybox timeout."""
+"""Exercise the wrapper with neither toybox timeout nor a writable TMPDIR."""
 
 from pathlib import Path
 import os
@@ -12,6 +12,7 @@ import tempfile
 
 def main():
     script = Path(sys.argv[1]).read_text()
+    assert "<<" not in script, "mksh here-documents need a writable TMPDIR"
     with tempfile.TemporaryDirectory(prefix="turner-probe-wrapper-") as temporary:
         root = Path(temporary)
         bindir = root / "bin"
@@ -44,11 +45,13 @@ print('probe completed')
         wrapper = script.replace("TB=/system/bin/toybox", f"TB={shlex.quote(str(toybox))}")
         wrapper = wrapper.replace("/tmp/turner-binder-probe", f"{root}/turner-binder-probe")
         wrapper = wrapper.replace("-C /tmp ", f"-C {shlex.quote(str(root))} ")
-        environment = os.environ | {"PATH": f"{bindir}:{os.environ['PATH']}"}
-        result = subprocess.run(["sh"], input=wrapper, text=True, env=environment,
+        environment = os.environ | {"PATH": f"{bindir}:{os.environ['PATH']}",
+                                    "TMPDIR": str(root / "unmounted-data/local/tmp")}
+        shell = sys.argv[2] if len(sys.argv) > 2 else "sh"
+        result = subprocess.run([shell], input=wrapper, text=True, env=environment,
                                 capture_output=True, timeout=25)
         assert result.returncode == 0, result.stdout + result.stderr
-        assert "Turner Binder probe v2" in result.stdout, result.stdout
+        assert "Turner Binder probe v3" in result.stdout, result.stdout
         archive = root / "turner-binder-probe-logs.tar"
         with tarfile.open(archive) as logs:
             def output(label):
@@ -62,7 +65,7 @@ print('probe completed')
             assert "probe timed out after 8 seconds" in split, split
             assert "probe completed" not in split, split
             assert "uid=0" in output("context"), logs.getnames()
-    print("PASS: probe launches without toybox timeout, stops a stalled child, and archives all results")
+    print("PASS: probe decodes with missing TMPDIR and timeout, stops a stalled child, and archives results")
 
 
 if __name__ == "__main__":
