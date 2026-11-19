@@ -60,8 +60,8 @@
 ## 参考与致谢
 
 - [TWRP-Test：YARP / TWRP 16.0 与 GUI2](https://github.com/TWRP-Test)
-- 原 Redmi K Pad 设备树
-  -skyward-extra 参考项目的思路
+- 原 Redmi K Pad 设备树https://github.com/GQiangZI/twrp_device_xiaomi_turner
+-  -skyward-extra 参考项目的思路
 - Xiaomi Pad 8 Pro Recovery 设备树
 - 致谢（正式仓库 README）：cogan17 / JonesqPacMan（rothko 设备树）、lingqiqi、YuKongA、kirklin、kodeaqua（taiko TWRP，首个公开的 mitee 解密先例）、TeamWin Recovery Project
 
