@@ -4,7 +4,9 @@
 
 > **Project status: In development. Hybrid v3.38 has passed an on-device pattern unlock and internal storage directory listing.**
 >
-> This repository stages a **YARP / TWRP 16.0 GUI2** Recovery port for Redmi K Pad (MT6991). See the [v3.40-rc1 candidate and hardware acceptance status](hybrid/stage56/RELEASE.md).
+> This repository stages a **YARP / TWRP 16.0 GUI2** Recovery port for Redmi K Pad (MT6991). See the [v3.40-rc2 candidate and hardware acceptance status](hybrid/stage57/RELEASE.md).
+
+[Changelog](CHANGELOG.md) · [Contributing and hardware tests](CONTRIBUTING.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## Project goals
 

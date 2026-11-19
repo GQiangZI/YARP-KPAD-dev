@@ -4,7 +4,9 @@
 
 > **项目状态：开发中。混合构建 v3.38 已实机通过图案解锁和内部存储目录读取。**
 >
-> 本仓库是 Redmi K Pad（MT6991）的 **YARP / TWRP 16.0 GUI2** Recovery 适配项目。[v3.40-rc1 候选版与实机验收状态](hybrid/stage56/RELEASE.md)。
+> 本仓库是 Redmi K Pad（MT6991）的 **YARP / TWRP 16.0 GUI2** Recovery 适配项目。[v3.40-rc2 候选版与实机验收状态](hybrid/stage57/RELEASE.md)。
+
+[更新日志](CHANGELOG.md) · [贡献与实机联测](CONTRIBUTING.md) · [第三方组件来源](THIRD_PARTY_NOTICES.md)
 
 ## 项目目标
 
