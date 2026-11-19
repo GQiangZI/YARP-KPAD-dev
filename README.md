@@ -2,9 +2,13 @@
 
 [**简体中文**](README.md) | [English](README.en.md)
 
-> **项目状态：开发中 · 尚未完成编译及实机验证 · 请勿刷写**
+> **✅ 项目状态：v1.0 已发布（2026-11-19）**
 >
-> 本仓库是 Redmi K Pad（MT6991）的 **YARP / TWRP 16.0 GUI2** Recovery 适配项目。目前内容尚不完整；任何源码、脚本或后续测试产物均**不代表可安全刷机**。
+> 本项目已完成：显示、触控、**数据解密（图案 / PIN / 密码）**、OTG、MTP、ADB、振动、备份恢复全部实机打通，解密后退出可正常进系统。
+>
+> 👉 **成品镜像请去正式仓库下载**：[GQiangZI/twrp_device_xiaomi_turner — Releases](https://github.com/GQiangZI/twrp_device_xiaomi_turner/releases)，镜像 `YARP-turner-K_PAD-vendor_boot-46428cf2.img`，SHA256 `e9ede605818609f9cbb7725feef7bbfc0490b15200f2d88d85ee87051af3714a`。
+>
+> **本仓库是开发材料库**：拼接脚本、构建材料、逐版记录与解密栈审计都在这里；**不要直接刷本仓库里的任何中间产物**，它们不是发布镜像。
 
 ## 项目目标
 
@@ -18,57 +22,47 @@
 | --- | --- |
 | 设备 | Redmi K Pad |
 | 代号 | `turner` |
-| 平台 | MediaTek MT6991 |
-| 基础系统 | Android 16 / HyperOS（具体固件版本须实机核验） |
+| 平台 | MediaTek MT6991（天玑 9400+，ro.hardware = mt8799） |
+| 基础系统 | HyperOS OS4.0.3.0 正式版（验证基线） |
 | 屏幕配置 | 1880 × 3008（当前设备树配置） |
-| Recovery 上游 | [TWRP-Test / twrp-16.0](https://github.com/TWRP-Test/android_bootable_recovery/tree/twrp-16.0) |
+| Recovery 上游 | [TWRP-Test / twrp-16.0](https://github.com/TWRP-Test) |
 | 输出目标 | **`vendor_boot.img`**（不是独立 `recovery.img`） |
 | 启动结构 | Vendor Boot v4、双 ramdisk、LZ4 legacy |
 
 > 小米平板 8 Pro（`piano`）的 YARP 横屏配置仅作 UI 参考 turner。
 
-## 开发进度
+## 开发进度（v1.0 终态）
 
-| 项目 | 当前状态 |
+| 项目 | 状态 |
 | --- | --- |
-| 原始设备树、libinit、BootControl | **已完整迁入原仓库基线（锁定提交 `1bb97be`）** |
-| MT6991 初始化配置、fstab 与 vold 补丁 | **文件已迁移，实机依赖仍需验证** |
-| Skyward 参考镜像（用户实机反馈，2026-11-14） | **可进入 Recovery，显示及触控正常；Data 解密失败。具体测试镜像变体、安装固件及失败日志待核实** |
-| 基线 DTB、内核模块、固件与 HAL | **274 个 Skyward 3.0.306 驱动已整套入库并验证，5 个模块配置完全一致（`94f62c0`）；触控 HAL 与解密环境仍待适配** |
-| YARP GUI2 / 平板显示与触控 | 待编译、待实机验证 |
-| Data 解密、ADB、MTP、备份恢复 | 待实机验证 |
-| Wi-Fi | 可选，暂缓 |
-| 静态检查 | **文件完整性与同步工具测试通过；整套驱动版本已匹配** |
-| GitHub Actions 构建 | **已配置手动工作流**；尚未执行完整 Android/YARP 构建 |
-| 实机启动、解密和刷机测试 | **尚未完成，禁止宣称可刷** |
+| YARP GUI2 / 平板显示与触控 | ✅ v1.0 已验证：GUI2 完整显示，触控流畅（Novatek NT36536E + 小米 touchfeature HAL） |
+| Data 解密 | ✅ v1.0 已验证：metadata + FBE（DE/CE）全链路打通，图案 / PIN / 密码均可；凭据经系统 mitee Gatekeeper 验证、KeyMint 下发授权令牌，与原厂同一条 TEE 链 |
+| ADB、MTP、备份恢复 | ✅ 已验证：ADB / MTP / sideload / OTG U 盘、备份恢复、分区管理、Install Image 可刷 Vendor Boot / DTBO |
+| 振动 | ✅ 已验证：AIDL vibratorfeature HAL + AW8693x 执行器驱动 |
+| 启动链防护 | ✅ 已验证：卡刷包禁止写 lk / preloader，保护 BL 解锁 |
+| Wi-Fi | ⏳ 未做（不影响 Recovery 核心功能） |
+| GitHub Actions 构建 | ✅ 设备树编译工作流已配置（`.github/workflows/`）；直出镜像在本机黑屏，发布镜像按「混合拼接」路线组装，材料与脚本在本仓库 |
+
+版本变更明细见正式仓库的 [`CHANGELOG.md`](https://github.com/GQiangZI/twrp_device_xiaomi_turner/blob/main/CHANGELOG.md)；解密栈审计见本仓库 `hybrid/decrypt-stack/FINDINGS.md`。
+
+## 实现方式（简述）
+
+直出编译的镜像在本机全部黑屏，最终采用**混合拼接**路线：以 HyperOS OS4 原厂 `vendor_boot` 为底（F0 与 DTB 保持原厂，DTB 逐字节一致），F1 放入 YARP 用户态并做严格库隔离，解密与触控的 HAL 在运行时从**已安装系统**拉起。完整说明见正式仓库 README。
 
 ## 重要安全说明
 
-**当前仓库已经迁入原设备树的主要源码和二进制，但尚未完成 YARP 整体编译与实机启动验证，不能认定可刷写。** 尤其需要确保 Vendor Boot v4 的 header、DTB、PLATFORM/RECOVERY ramdisk、原厂模块、fstab、init 与 HAL 依赖正确，且镜像不超过 64 MiB 分区容量。
-
-首次实机测试前应准备可核验的原厂镜像与恢复方案，并记录设备及固件版本；未经明确验证的产物只允许作为开发测试材料。
-
-- [安全与刷机前检查（中文）](SAFETY.zh-CN.md) · [English](SAFETY.md)
-- [YARP GUI2 功能与 Wi-Fi 验收要求（中文）](docs/YARP_GUI2_FEATURE_PARITY.zh-CN.md) · [English](docs/YARP_GUI2_FEATURE_PARITY.md)
-- [Skyward Vendor Boot 结构分析](analysis/SKYWARD_VENDOR_BOOT_COMPARISON.md)
-- [Skyward 初始化对照](analysis/SKYWARD_INIT_AUDIT.md)
-- [只读 Vendor Boot 结构检查脚本](tools/verify_vendor_boot.py)
-- [已验证镜像分段提取工具](tools/extract_vendor_boot_reference.py)
-- [Skyward RECOVERY 文件清单与差异](analysis/SKYWARD_PAYLOAD_INVENTORY.md)
-- [USB 控制器与 MTP 初始化差异](analysis/USB_CONTROLLER_MTP_AUDIT.md)
-- [KeyMint 解密版本与 AVB 安全风险](analysis/CRYPTO_PATCH_LEVEL_AVB_RISKS.md)
-- [274 个 Skyward 驱动版本差异（重要）](analysis/SKYWARD_PLATFORM_MODULE_AUDIT.md)
-- [驱动整体同步工具（默认只读）](tools/sync_skyward_modules.py) · [驱动版本校验](tools/check_skyward_module_set.py)
-- [Skyward 完整驱动整合说明（中英双语）](docs/SKYWARD_DRIVER_INTEGRATION.md) · [自动导入工作流](.github/workflows/integrate-skyward-modules.yml)
-- [原始设备树完整导入记录](analysis/BASELINE_IMPORT_REPORT.json) · [导入任务](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43518739112)
-- [最新静态与驱动同步测试结果](https://github.com/GQiangZI/YARP-KPAD-dev/actions/runs/43528757341)
-- [YARP 手动构建配置](.github/workflows/build-twrp.yml)（测试镜像默认不公开导出）
+- **本仓库不提供可刷的成品镜像**。成品只在正式仓库的 Releases 发布，刷机前请核对 SHA256。
+- turner 没有独立 recovery 分区，Recovery 在 **vendor_boot** 里，**不能用 `fastboot boot` 测试**，只能刷入：`fastboot flash vendor_boot YARP-turner-K_PAD-vendor_boot-46428cf2.img`，然后 `fastboot reboot recovery`。
+- 刷前请先备一份原厂 `vendor_boot.img`，需要恢复时刷回即可；不要刷入原厂完整包里的 lk / preloader（可能导致重新上锁）。
+- 首次实机测试前应准备可核验的原厂镜像与恢复方案，并记录设备及固件版本；未经明确验证的产物只允许作为开发测试材料。
+- 安全与刷机前检查（中文）· English：见 `SAFETY.md` / `SAFETY.zh-CN.md`。
 
 ## 参考与致谢
 
-- [TWRP-Test：YARP / TWRP 16.0 与 GUI2](https://github.com/TWRP-Test/android_bootable_recovery)
-- [原 Redmi K Pad 设备树](https://github.com/GQiangZI/twrp_device_xiaomi_turner)
-- [Skyward Recovery](https://github.com/kirklin/skyward) · [skyward-extra](https://github.com/echoskies-works/skyward-extra)
-- [Xiaomi Pad 8 Pro Recovery 设备树](https://github.com/xiaomi-pad-8-pro-development/android_device_xiaomi_piano-recovery)
+- [TWRP-Test：YARP / TWRP 16.0 与 GUI2](https://github.com/TWRP-Test)
+- 原 Redmi K Pad 设备树
+- [Skyward Recovery](https://github.com/kirklin/skyward) · skyward-extra
+- Xiaomi Pad 8 Pro Recovery 设备树
+- 致谢（正式仓库 README）：cogan17 / JonesqPacMan（rothko 设备树）、lingqiqi、YuKongA、kirklin、酷安 小智乃敲可爱（Skyward turner 适配）、kodeaqua（taiko TWRP，首个公开的 mitee 解密先例）、TeamWin Recovery Project
 
 保留各上游项目适用的许可证与版权信息。**本仓库仅用于开发与验证，原设备树仓库不在此处修改。**
