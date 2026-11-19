@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 ROOT = Path(__file__).resolve().parents[2]
 KEYSTORE = b"android.system.keystore2.IKeystoreService/default"
+AUTHORIZATION = b"android.security.authorization"
 
 FAKE_CPP = r'''
 #include <assert.h>
@@ -80,7 +81,8 @@ int AParcel_writeString(void *in, const char *name, int length) {
     return 0;
 }
 int AIBinder_transact(void *p, unsigned code, void **in, void **reply, unsigned flags) {
-    assert(p == &context && code == 2 && flags == 0 && !strcmp(*in, keystore));
+    assert(p == &context && code == 2 && flags == 0);
+    assert(!strcmp(*in, keystore) || !strcmp(*in, "android.security.authorization"));
     ++calls;
     release(*in);
     *in = 0;
@@ -137,6 +139,11 @@ def exercise():
     mode(4)
     dec(check(KEYSTORE))
     assert calls() == 155, "a valid modern result must bypass the fallback"
+    mode(0)
+    assert not check(AUTHORIZATION)
+    mode(1)
+    dec(check(AUTHORIZATION))
+    assert calls() == 157 and lib.fake_live_allocations() == 0 and lib.fake_refs() == 0
     print("PASS: legacy transaction, late registration, missing service, errors, cleanup and concurrency")
 
 

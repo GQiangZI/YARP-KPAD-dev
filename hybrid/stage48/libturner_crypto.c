@@ -251,6 +251,7 @@ void *AServiceManager_checkService(const char *name) {
         "android.hardware.gatekeeper.IGatekeeper/default",
         "android.hardware.security.secureclock.ISecureClock/default",
         "android.hardware.security.sharedsecret.ISharedSecret/default",
+        "android.security.authorization",
     };
     for (unsigned i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
         if (eq(name, names[i])) return turner_legacy_binder_check(name, i);
