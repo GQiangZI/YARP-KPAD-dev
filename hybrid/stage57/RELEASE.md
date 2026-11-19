@@ -42,6 +42,19 @@ sha256sum turner-vendor_boot-v3.40-rc2.img
 RC2 只改第一 ramdisk 中的 init 配置，第二 ramdisk 逐字节保持。
 嵌入式 AVB 只包含哈希描述符，认证算法仍为 NONE。
 
+## 公开发布前的验收
+
+RC2 的守卫在 Recovery 启动时重定向部分 `by-name` 入口。它没有在安装前拒绝刷机包的机制，
+也没有验证所有写入路径，因此目前无法确认对 LK 和 preloader 的写入一定会被拦截。
+
+- 刷包保护：在实际写入前拒绝以受保护分区为目标的安装包。安装器若无法可靠判断写入目标，
+  应拒绝该安装流程。验收覆盖本地 ZIP、ADB sideload、脚本安装、A/B payload 及槽位别名。
+  先用模拟分区和测试包检查拒绝结果与零写入，再做实机验证。
+- 镜像与日志：正式镜像不打包采集结果、测试日志、调试转储或临时诊断脚本，也不自动把
+  Recovery 日志留在设备存储。RC2 两段 ramdisk 未见历史日志文件或日志包，但仍包含
+  `turner-crypto-status.sh`，Recovery 二进制也包含运行时日志路径。发布前需验证常规启动、
+  重启及安装失败时的日志存放位置，并验证精简后 Data 解密、ADB 与 MTP 仍正常。
+
 ## 发布记录
 
 使用标签 `v3.40-rc2` 和 GitHub **Pre-release**。上传镜像、SHA256 文件，
