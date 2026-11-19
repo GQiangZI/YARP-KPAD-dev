@@ -35,6 +35,25 @@ LK、preloader 和加密相关分区不开放新的单镜像刷入入口。
 公开发布时，优先用 **Pre-release** 标记，并附上 SHA256、已验证的固件版本、槽位和回退镜像。
 稳定版验收尤其关注 Cache 备份失败、刷新偶发卡住和 MTP 切换后 ADB 识别问题。
 
+## 实机故障采集
+
+[RC1 采集脚本](../../tools/turner-rc1-diagnostics.sh) 从 ADB 推到 `/tmp` 后运行。
+Cache 失败或刷新卡住时采集当前日志，脚本同时记录存储挂载和 USB 状态。
+
+```sh
+adb push turner-rc1-diagnostics.sh /tmp/turner-rc1-diagnostics.sh
+adb shell sh /tmp/turner-rc1-diagnostics.sh snapshot > turner-rc1-incident.txt
+```
+
+检查 MTP 时，先用 ADB 启动采样，再切换 MTP。采样在平板本机持续约 40 秒，
+关闭 MTP 并重新连接 ADB 后拉取记录。RC1 的 ramdisk 缺少
+`sys.usb.config=mtp,adb` 的 init 触发项，采样确认实际 USB 控制器和端点状态。
+
+```sh
+adb shell sh /tmp/turner-rc1-diagnostics.sh watch-usb
+adb pull /tmp/turner-rc1-usb.txt
+```
+
 ## 本地构建
 
 ```sh
