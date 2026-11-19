@@ -2,9 +2,9 @@
 
 [**简体中文**](README.md) | [English](README.en.md)
 
-> **项目状态：开发中 · 尚未完成编译及实机验证 · 请勿刷写**
+> **项目状态：开发中。混合构建 v3.38 已实机通过图案解锁和内部存储目录读取。**
 >
-> 本仓库是 Redmi K Pad（MT6991）的 **YARP / TWRP 16.0 GUI2** Recovery 适配项目。目前内容尚不完整；任何源码、脚本或后续测试产物均**不代表可安全刷机**。
+> 本仓库是 Redmi K Pad（MT6991）的 **YARP / TWRP 16.0 GUI2** Recovery 适配项目。[v3.40-rc1 候选版与实机验收状态](hybrid/stage56/RELEASE.md)。
 
 ## 项目目标
 
@@ -27,7 +27,7 @@
 
 > 小米平板 8 Pro（`piano`）的 YARP 横屏配置仅作 UI 参考 turner。
 
-## 开发进度
+## 设备树迁移阶段记录
 
 | 项目 | 当前状态 |
 | --- | --- |
@@ -44,7 +44,7 @@
 
 ## 重要安全说明
 
-**当前仓库已经迁入原设备树的主要源码和二进制，但尚未完成 YARP 整体编译与实机启动验证，不能认定可刷写。** 尤其需要确保 Vendor Boot v4 的 header、DTB、PLATFORM/RECOVERY ramdisk、原厂模块、fstab、init 与 HAL 依赖正确，且镜像不超过 64 MiB 分区容量。
+完整源码编译与混合镜像是两条构建路径，各产物以对应版本的验收记录为准。Vendor Boot v4 需核对 header、DTB、PLATFORM/RECOVERY ramdisk、原厂模块、fstab、init 与 HAL 依赖以及 64 MiB 分区容量。
 
 首次实机测试前应准备可核验的原厂镜像与恢复方案，并记录设备及固件版本；未经明确验证的产物只允许作为开发测试材料。
 

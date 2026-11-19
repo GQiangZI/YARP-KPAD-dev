@@ -2,9 +2,9 @@
 
 [简体中文](README.md) | [**English**](README.en.md)
 
-> **Project status: In development · Not fully built or device-tested · DO NOT FLASH**
+> **Project status: In development. Hybrid v3.38 has passed an on-device pattern unlock and internal storage directory listing.**
 >
-> This repository stages a **YARP / TWRP 16.0 GUI2** Recovery port for Redmi K Pad (MT6991). The upstream device-tree baseline has been imported, but the YARP build and on-device tests remain incomplete; source files, scripts and CI artifacts are **not proof of a safe, flash-ready image**.
+> This repository stages a **YARP / TWRP 16.0 GUI2** Recovery port for Redmi K Pad (MT6991). See the [v3.40-rc1 candidate and hardware acceptance status](hybrid/stage56/RELEASE.md).
 
 ## Project goals
 
@@ -30,7 +30,7 @@ Bring the upstream **YARP GUI2/LVGL user interface and core recovery functions**
 
 > The Xiaomi Pad 8 Pro (`piano`) YARP tree is a useful tablet UI reference, **not** a source of drop-in Qualcomm drivers, touch transforms or recovery partition settings for turner.
 
-## Development status
+## Device-tree migration history
 
 | Item | Status |
 | --- | --- |
@@ -47,7 +47,7 @@ Bring the upstream **YARP GUI2/LVGL user interface and core recovery functions**
 
 ## Safety notice
 
-**The original device-tree file set is now imported, but it has not passed a complete YARP build or hardware boot test; it is not flash-ready.** Vendor Boot v4 header, DTB, PLATFORM/RECOVERY ramdisks, vendor modules, fstab, init and HAL dependencies must all be verified. The resulting image must fit the 64 MiB vendor_boot partition. A successful build alone is not sufficient to distribute an image to other users.
+The full-source build and the hybrid repack follow separate validation paths. Check the acceptance record for the specific image. The Vendor Boot v4 header, DTB, ramdisks, modules, fstab, init and HAL dependencies must be verified, and the image must fit the 64 MiB vendor_boot partition.
 
 Before testing on hardware, prepare a verified stock image, a recovery/rollback method and the exact device/firmware details. Untested artifacts must never be labeled stable.
 
