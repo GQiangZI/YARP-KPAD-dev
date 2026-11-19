@@ -1,0 +1,136 @@
+#!/system/bin/sh
+# Turner: trace the FBE directory and policy checks during a normal decrypt retry.
+# The bundled strace binary is unmodified strace 6.13, LGPL-2.1-or-later.
+# Corresponding source: https://deb.debian.org/debian/pool/main/s/strace/strace_6.13+ds.orig.tar.xz
+# Source SHA256: 3efb31716098b891f833e38432083a9863aa6ef45a5be26438cfd9833fac2e6d
+# Build and license details: https://github.com/GQiangZI/YARP-KPAD-dev/tree/fix/turner-v335-crypto-lookup/hybrid/stage51
+
+archive=/tmp/turner-fbe-trace-logs.tar
+window=45
+umask 077
+
+tracer_of() {
+    while read -r field value rest; do
+        if [ "$field" = TracerPid: ]; then
+            printf '%s\n' "$value"
+            return
+        fi
+    done < "/proc/$1/status"
+}
+
+snapshot_paths() {
+    echo '--- clock and mounts'
+    date
+    cat /proc/uptime
+    grep -E ' /data( |/user/0 )' /proc/mounts
+    echo "twrp.user.0.decrypt=$(getprop twrp.user.0.decrypt)"
+    echo '--- directories (metadata only)'
+    ls -ld /data/data /data/user/0 /data/media /data/media/obb /data/media/0 \
+        /data/system/users/0 /data/misc/profiles/cur/0 /data/system_de/0 \
+        /data/vendor_de/0 /data/misc_de/0 /data/user_de/0 2>&1
+}
+
+stop_tracer() {
+    if [ -n "$tracer" ]; then
+        kill -TERM "$tracer" 2>/dev/null || :
+        wait "$tracer" 2>/dev/null || :
+        tracer=''
+    fi
+}
+
+capture() {
+    work=$1
+    pid=$2
+    case "$work" in /tmp/turner-fbe-trace.*) ;; *) exit 1 ;; esac
+    case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
+    tracer=''
+    trap 'stop_tracer; exit 1' INT TERM
+    snapshot_paths > "$work/directories-before.txt"
+    : > "$work/syscalls.txt"
+    # Read/write buffers, exec arguments, and input events are excluded.
+    # Keep ioctls and extended-attribute buffers raw to avoid decoding key data.
+    syscalls=ioctl,openat,openat2,close,fstat,newfstatat,statx,faccessat,faccessat2
+    syscalls=$syscalls,mkdirat,fchmod,fchmodat,fchown,fchownat,renameat,renameat2,unlinkat
+    syscalls=$syscalls,mount,umount2,readlinkat,getxattr,lgetxattr,setxattr,lsetxattr
+    "$work/strace" -f -qq -ttt -s 200 -y -I 2 \
+        -e "trace=$syscalls" -e raw=ioctl,getxattr,lgetxattr,setxattr,lsetxattr \
+        -o "$work/syscalls.txt" -p "$pid" 2> "$work/tracer.txt" &
+    tracer=$!
+    tries=0
+    while [ "$tries" -lt 5 ]; do
+        [ "$(tracer_of "$pid" 2>/dev/null)" = "$tracer" ] && break
+        kill -0 "$tracer" 2>/dev/null || break
+        sleep 1
+        tries=$((tries + 1))
+    done
+    if [ "$(tracer_of "$pid" 2>/dev/null)" = "$tracer" ]; then
+        printf '%s\n' attached > "$work/state"
+        sleep "$window"
+    else
+        printf '%s\n' failed > "$work/state"
+    fi
+    stop_tracer
+    snapshot_paths > "$work/directories-after.txt"
+    grep -E "operation_start: 'Decrypt'|Attempting to initialize DE keys|fscrypt_init_user0 returned|Unable to prepare DE storage|Unable to decrypt FBE device" \
+        /tmp/recovery.log 2>/dev/null | tail -n 30 > "$work/fbe-status.txt"
+    result="$work/result.tar"
+    if tar -cf "$result" -C "$work" syscalls.txt tracer.txt directories-before.txt \
+        directories-after.txt fbe-status.txt && chmod 0644 "$result" && mv -f "$result" "$archive"; then
+        printf 'Saved %s\n' "$archive"
+    else
+        echo 'Failed to package the FBE trace.' >&2
+        exit 1
+    fi
+    rm -f "$work/strace"
+}
+
+if [ "$(id -u)" != 0 ]; then
+    echo 'Run this script in the Recovery terminal.' >&2
+    exit 1
+fi
+
+if [ "${1:-}" = --capture ]; then
+    capture "$2" "$3"
+    exit $?
+fi
+
+set -- $(pidof recovery)
+if [ "$#" != 1 ] || [ "$(readlink "/proc/$1/exe")" != /system/bin/recovery ]; then
+    echo 'Expected one running /system/bin/recovery process.' >&2
+    exit 1
+fi
+pid=$1
+if [ "$(tracer_of "$pid" 2>/dev/null)" != 0 ]; then
+    echo 'Recovery already has a tracer or its process status is unavailable.' >&2
+    exit 1
+fi
+work=$(mktemp -d /tmp/turner-fbe-trace.XXXXXX) || exit 1
+
+if ! {
+@PAYLOAD@
+} | /system/bin/toybox base64 -d > "$work/strace"; then
+    echo 'Unable to unpack strace.' >&2
+    exit 1
+fi
+
+digest=$(/system/bin/toybox sha256sum "$work/strace")
+if [ "${digest%% *}" != '@SHA256@' ]; then
+    echo 'Strace checksum mismatch.' >&2
+    exit 1
+fi
+chmod 0700 "$work/strace" || exit 1
+setsid /system/bin/sh "$0" --capture "$work" "$pid" \
+    </dev/null > "$work/runner.txt" 2>&1 &
+tries=0
+while [ ! -s "$work/state" ] && [ "$tries" -lt 7 ]; do
+    sleep 1
+    tries=$((tries + 1))
+done
+if [ "$(cat "$work/state" 2>/dev/null)" = attached ]; then
+    echo 'FBE trace attached for 45 seconds. Retry Decrypt once in the Recovery UI.'
+    printf 'Output after capture: %s\n' "$archive"
+else
+    cat "$work/tracer.txt" "$work/runner.txt" 2>/dev/null
+    printf 'Attach failed. If saved, send %s\n' "$archive" >&2
+    exit 1
+fi
