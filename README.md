@@ -61,8 +61,8 @@
 
 - [TWRP-Test：YARP / TWRP 16.0 与 GUI2](https://github.com/TWRP-Test)
 - 原 Redmi K Pad 设备树
-- [Skyward Recovery](https://github.com/kirklin/skyward) · skyward-extra
+  -skyward-extra 参考项目的思路
 - Xiaomi Pad 8 Pro Recovery 设备树
-- 致谢（正式仓库 README）：cogan17 / JonesqPacMan（rothko 设备树）、lingqiqi、YuKongA、kirklin、酷安 小智乃敲可爱（Skyward turner 适配）、kodeaqua（taiko TWRP，首个公开的 mitee 解密先例）、TeamWin Recovery Project
+- 致谢（正式仓库 README）：cogan17 / JonesqPacMan（rothko 设备树）、lingqiqi、YuKongA、kirklin、kodeaqua（taiko TWRP，首个公开的 mitee 解密先例）、TeamWin Recovery Project
 
 保留各上游项目适用的许可证与版权信息。**本仓库仅用于开发与验证，原设备树仓库不在此处修改。**
