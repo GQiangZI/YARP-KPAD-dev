@@ -1,0 +1,21 @@
+--- a/twrpminui/graphics_drm.cpp
++++ b/twrpminui/graphics_drm.cpp
+@@ -1233,7 +1233,7 @@
+       // TWRP: high refresh is opt-in and must keep the takeover resolution.
+       uint32_t fastest = drm[i].selected_mode;
+       const auto& mode = drm[i].monitor_crtc->mode;
+-      if (!legacy_modeset && android::base::GetBoolProperty("twrp.drm.fast_mode", false) &&
++      if (android::base::GetBoolProperty("twrp.drm.fast_mode", false) &&
+           pick_fastest_mode(drm[i].monitor_connector, mode.hdisplay, mode.vdisplay, &fastest) &&
+           drm[i].monitor_connector->modes[fastest].vrefresh > mode.vrefresh) {
+         drm[i].fast_mode = drm[i].monitor_connector->modes[fastest];
+@@ -1256,8 +1256,7 @@
+       }
+ 
+       // TWRP: optional RAM staging, or damage synchronization after direct scanout.
+-      drm[i].direct_scanout = legacy_modeset ||
+-          android::base::GetBoolProperty("twrp.drm.direct_scanout", true);
++      drm[i].direct_scanout = android::base::GetBoolProperty("twrp.drm.direct_scanout", true);
+       if (!drm[i].direct_scanout) {
+         drm[i].draw_buf = GRSurface::Create(width, height, drm[i].GRSurfaceDrms[0]->row_bytes,
+                                            drm[i].GRSurfaceDrms[0]->pixel_bytes);
