@@ -1,0 +1,9 @@
+--- a/twrpminui/graphics_drm.cpp
++++ b/twrpminui/graphics_drm.cpp
+@@ -1236 +1236 @@
+-      if (!legacy_modeset && android::base::GetBoolProperty("twrp.drm.fast_mode", false) &&
++      if (android::base::GetBoolProperty("twrp.drm.fast_mode", false) &&
+@@ -1259,2 +1259 @@
+-      drm[i].direct_scanout = legacy_modeset ||
+-          android::base::GetBoolProperty("twrp.drm.direct_scanout", true);
++      drm[i].direct_scanout = android::base::GetBoolProperty("twrp.drm.direct_scanout", true);
