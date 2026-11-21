@@ -1,0 +1,52 @@
+diff --git a/ziptool.cpp b/ziptool.cpp
+index 0b42716..f517c78 100644
+--- a/ziptool.cpp
++++ b/ziptool.cpp
+@@ -237,22 +237,36 @@ static void TestOne(ZipArchiveHandle zah, const ZipEntry64& entry, const std::st
+   }
+ }
+ 
+-static void ExtractToPipe(ZipArchiveHandle zah, const ZipEntry64& entry, const std::string& name) {
+-  // We need to extract to memory because ExtractEntryToFile insists on
+-  // being able to seek and truncate, and you can't do that with stdout.
+-  if (entry.uncompressed_length > SIZE_MAX) {
+-    die(0, "entry size %" PRIu64 " is too large to extract.", entry.uncompressed_length);
++class PipeWriter final : public zip_archive::Writer {
++ public:
++  bool Append(uint8_t* buf, size_t size) override {
++    while (size != 0) {
++      const size_t count = size > 65536 ? 65536 : size;
++      if (!android::base::WriteFully(STDOUT_FILENO, buf, count)) return false;
++      crc = static_cast<uint32_t>(crc32(crc, buf, static_cast<uInt>(count)));
++      length += count;
++      buf += count;
++      size -= count;
++    }
++    return true;
+   }
+-  auto uncompressed_length = static_cast<size_t>(entry.uncompressed_length);
+-  uint8_t* buffer = new uint8_t[uncompressed_length];
+-  int err = ExtractToMemory(zah, &entry, buffer, uncompressed_length);
++  uint32_t crc = 0;
++  uint64_t length = 0;
++};
++
++static void ExtractToPipe(ZipArchiveHandle zah, const ZipEntry64& entry, const std::string& name) {
++  // Writer callbacks stream with bounded buffers and support non-seekable
++  // stdout. Do not allocate an entire multi-GiB ZIP64 member in Recovery RAM.
++  PipeWriter writer;
++  int err = ExtractToWriter(zah, &entry, &writer);
+   if (err < 0) {
+     die(0, "failed to extract %s: %s", name.c_str(), ErrorCodeString(err));
+   }
+-  if (!android::base::WriteFully(1, buffer, uncompressed_length)) {
+-    die(errno, "failed to write %s to stdout", name.c_str());
++  // libziparchive's general extraction CRC checking is disabled in this tree.
++  // Check the same bytes during output, without another read or hash pass.
++  if (writer.length != entry.uncompressed_length || writer.crc != entry.crc32) {
++    die(0, "CRC/length mismatch extracting %s", name.c_str());
+   }
+-  delete[] buffer;
+ }
+ 
+ static void ExtractOne(ZipArchiveHandle zah, const ZipEntry64& entry, std::string name) {

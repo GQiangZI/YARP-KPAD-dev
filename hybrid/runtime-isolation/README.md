@@ -1,94 +1,127 @@
-# Turner installed-ROM runtime isolation (development candidate)
+# Turner recovery runtime, display and installer repairs (development candidate)
 
-This directory addresses a reproducible installation hazard in the published
-YARP v1.0 hybrid image. TEE, KeyMint, Gatekeeper, touch, vibration, and keystore2
-load their executables, libraries and data from vendor, odm, system, and
-system_ext. Their supervisors continue restarting them. The original mounted
-filesystems therefore remain in use when a full-Super installer needs to release
-them. Merely killing a child process or changing block-device read-only flags
-does not remove this dependency.
+The published YARP v1.0 hybrid runs TEE, KeyMint, Gatekeeper, touch, vibration
+and keystore2 directly from Super-backed logical partitions. Its supervisors
+keep those filesystems busy. It also forces direct drawing in the MTK legacy
+KMS path, does not start its early_hal BootControl service, and uses a ziptool
+stdout implementation that failed the tested member larger than 4 GiB.
 
-## Candidate behavior
+## Exact-build changes
 
-Before starting dependent HALs, snapshot those four exact installed logical
-partitions into recovery tmpfs and attach read-only loop devices. Replace their
-canonical mounts with the verified snapshots, then create a private mount
-namespace. Start the original six services inside that namespace using their
-existing library ordering and supervisor scripts. Public mounts can subsequently
-be unmounted normally while services continue using RAM snapshots. They never
-remount an old mapper after a Super overwrite. The ICU APEX is staged in RAM
-before namespace creation. A missing dependency or insufficient RAM fails closed.
+- Snapshot the exact installed vendor, odm, system and system_ext images into
+  RAM before HAL startup. Verify read-only loop mounts, stage ICU APEX, and
+  start the original service chain in a private mount namespace. Public mounts
+  can be unmounted normally. Never remount old Super mappers after replacement.
+  A verified awk is included in ramdisk. The namespace helper is static.
+- Retain MTK legacy KMS but allow cached RAM drawing and the existing opt-in
+  fastest same-resolution mode. --display cached60 isolates drawing changes;
+  cached-fast enables both. Check the entire original library hash and both
+  instructions before applying the exact-build patch.
+- --bootctl starts the existing vendor.boot-default service explicitly because
+  this recovery only starts default/hal classes, not early_hal. A static client
+  launcher clears GUI/installer LD_LIBRARY_PATH and LD_PRELOAD before executing
+  the verified client against the stock ramdisk Binder ABI.
+- --ziptool and --ziparchive supply the bounded stdout extractor previously
+  tested in Turner R97. A static launcher selects a private libziparchive and
+  compatible recovery SDK libraries. Other processes keep their libraries.
+  unzip/zipinfo aliases preserve argument semantics. The source change is in
+  ziptool-streaming-stdout.patch. Binaries are verified build inputs, not checked
+  into this repository. CRC and output length are checked during streaming.
 
-The namespace helper must be statically linked: tee-supplicant's service-level
-LD_LIBRARY_PATH selects installed-system libc, which is unsuitable for an
-intermediate recovery-linked executable. Its constrained init capability list
-also needs SYS_ADMIN and SYS_CHROOT for setns and SYS_PTRACE for inspecting the
-keeper through procfs. Other service definitions keep their original identities.
+The repacker accepts only the published v1.0 base SHA256. F0, DTB and unrelated
+F1 entries/metadata stay unchanged. The existing unsigned AVB hash is updated.
+Every changed/added path is listed in the manifest. This is not a cross-version
+binary patcher. The optional inputs are hash-pinned.
 
-The included repacker accepts only the published v1.0 SHA256. It preserves the
-complete F0 fragment, DTB, unrelated CPIO entries and metadata, and rewrites only
-five specified F1 paths and the existing unsigned AVB hash descriptor. It accepts
-the awk binary extracted from the matching installed system as a build input;
-no vendor binary or private capture is checked into this repository.
+## Hardware validation, 2026-11-20
 
-## Validation performed
+Turner / Redmi K Pad, 12 GiB RAM, OS4.0.3.0.XAOCNXM, current slot A.
+Final candidate rc8 SHA256:
+587dbb6d449a92362016a43b82c57bdd29dda22892bf0aeee83062a3a55d8760
 
-Hardware: Redmi K Pad / Turner, 12 GiB RAM, OS4.0.3.0.XAOCNXM, current slot A.
-The candidate was read back by SHA256 after installation to vendor_boot_a.
+Only vendor_boot_a was written and completely read back. F0/DTB were unchanged.
+Final vendor_boot_b, LK A/B and preloader A/B hashes matched saved originals.
+No complete ROM, Super, userdata or metadata write was performed.
 
-- Clean recovery boot: staging ready, namespace ready, setup done=1; TEE running.
-- Existing data automatically decrypted and mounted; no credentials were supplied.
-- Touch driver input nodes and all dependent HAL processes present. Physical
-  touch response after the patch still needs user verification.
-- Normal unmounts of vendor, odm, /mnt/system_ext and /mnt/system succeeded.
-  Private service mounts remained read-only RAM loops, with all six services alive.
-- Real recovery ORS install path: updater exits 0, 37, and 0 were correctly
-  displayed; the failure did not prevent a subsequent successful installation.
-  The ORS transport itself returns EOF, not the updater's numerical exit status.
-- awk remained executable after public vendor was unmounted.
-- Existing LK and preloader A/B plus vendor_boot_b matched pre-test hashes before
-  candidate installation. Final post-test protection hashes remain pending.
-- Recovery backlight was explicitly verified as 0 during service debugging.
+| Check | Observed result |
+|---|---|
+| Clean boot and existing-data automatic decryption | Passed; setup.done=1, data readable, six services running |
+| Active DRM mode after clean rc8 boot | 1880x3008 at 165 Hz |
+| Normal public vendor/odm/system/system_ext unmount | Passed; six services kept running from RAM |
+| Real ORS updater success / exit 37 / retry | Passed on final rc8 after mount release |
+| awk and BootControl after public unmount | 42; current slot 0; snapshot none |
+| BootControl startup queries | Current 0, count 2, active 0, snapshot none; no slot mutation tested |
+| ZIP64 4,296,015,872-byte deflated member | Full SHA256 matched; exit 0 |
+| Small stored and deflated ZIP64 members | Matching SHA256 |
+| Corrupt stored-member CRC | Rejected, exit 1 |
+| Output consumer closes pipe | Nonzero exit 141 |
+| Large-member stdout memory | Maximum sampled RSS 2,212 KiB |
+| Android return | boot_completed=1, candidate hash still matches |
+| Final screen state | Asleep, display OFF, backlight 0 |
 
-Four snapshots occupy 5,166,112 KiB (about 4.93 GiB); copying took roughly 6.4
-seconds in a clean boot. About 5.7 GiB remained available afterward. This is a
-correctness-first prototype, not a memory-optimized release. The script enforces
-1.5 GiB of available-memory headroom and tmpfs capacity checks. Smaller-RAM
-devices, other firmware, ext4 logical partitions, low-memory handling, interrupted
-staging cleanup, and changes in service dependencies need further review.
+### Display measurements
 
-## Outstanding acceptance gates — do not release yet
+An independent init-owned harness switched USB to pure ADB before stopping
+recovery, bounded each benchmark, restarted recovery and blanked the backlight.
+These are rendering/presentation microbenchmarks, not LVGL animation FPS or
+human touch acceptance. minui-bench.c must never run beside the active GUI.
 
-A later live display-library experiment stopped the recovery service while
-MTP+ADB was active. USB then disappeared and did not re-enumerate; no subsequent
-device-side observation was possible. This experiment did not flash a display
-patch to vendor_boot. The persisted image remains the runtime-only candidate.
-The recovery-service restart/USB lifecycle must be investigated separately;
-do not infer that the display patch executed or that the tablet rebooted.
+| Drawing path | Full-frame gr_blit_raw + flip | Partial-region blit + flip |
+|---|---:|---:|
+| Original direct, 60 Hz | 33.332 ms / 30.00 FPS | 16.668 ms / 60.00 FPS |
+| Cached, 60 Hz | 16.666 ms / 60.00 FPS | 16.666 ms / 60.00 FPS |
+| Cached, fastest mode | 6.053 ms / 165.22 FPS | 6.053 ms / 165.22 FPS |
 
-Pending: recover physical access, Android round trip, final screen-off check,
-final protected-partition hashes, physical touch, explicit HAL restart after
-public unmount, BootControl, ZIP64 and full-Super streaming validation. No full
-ROM or Super write was performed. Keep this change as a draft until these pass.
+Private dumb-buffer measurements: full-frame RAM-to-DRM 1.856 ms, DRM-to-RAM
+20.542 ms, DRM-to-DRM 20.187 ms. The original Flip copies damage between scanout
+buffers; cached drawing avoids that expensive readback. A separate scalar-fill
+stress test timed out on the original path; do not confuse it with GUI blits.
+drm-memory-bench.c only allocates private buffers, without DRM master, modesets
+or active framebuffer writes.
 
-## Display investigation
+## Remaining acceptance gates
 
-Read-only DRM queries report active 1880x3008 at 60 Hz and available modes of
-165, 144, 120, 90, 60, 50 and 48 Hz. The published library forces legacy KMS for
-MTK, which bypasses both the existing opt-in fast-mode selection and the optional
-cached RAM drawing path. The two exact-build changes in patch_display.py map to
-display-source.patch. They are experimental, excluded from repack.py, and have
-not been validated on hardware. Raising panel Hz alone does not establish GUI FPS.
+Keep the PR draft. Full-Super/complete ROM installation, physical touch response,
+sideload/OTG, credential-protected decryption and actual slot mutation remain
+unverified. These probes do not certify the whole recovery.
 
-## Build and host checks
+KeyMint, Gatekeeper, touch, vibration and keystore2 restarted successfully after
+public unmount. Deliberately restarting TEE did not: /dev/teepriv0 returned EBUSY
+in both namespaces, with no remaining userspace fd found. A clean recovery
+reboot restored TEE. The exact driver/secure-world cleanup cause is unresolved;
+it is not proven to be caused by mount isolation. Keep TEE alive during install,
+and never use kill/restart as a mount-release mechanism. The tested normal
+release/retry path leaves it alive and passed.
 
-Compile turner-runtime.c using Android NDK aarch64-linux-android28-clang with
--O2 -Wall -Wextra -Werror -static. Python requires lz4. Run:
+Four RAM snapshots cost 5,166,112 KiB (about 4.93 GiB), take about 6.4 seconds,
+and leave about 5.7 GiB available here. Smaller-memory variants, interrupted
+staging and other firmware dependencies need review.
+
+An earlier stop-recovery command inside an MTP+ADB shell lost USB before its
+remaining commands could be observed. Later tests used an independent init-owned
+guard and pure ADB. Do not reuse the unsafe sequence or misreport its outcome.
+
+Existing ROM packages prepend an older bundled libc++ and invoke their own
+bootctl. That can break even timeout under GUI SDK libraries. The next explicit
+Turner/YARP package profile must select the verified /system/bin/bootctl contract.
+Installing this REC does not rewrite existing ZIP updater scripts. Do not
+generalize its library paths to Sheng/Byron. Skyward renderer, BootControl and
+ZIP handling require separate implementation-specific checks; these offsets
+must never be copied across devices or builds.
+
+## Build
+
+Compile turner-runtime.c with Android NDK aarch64-linux-android28-clang:
+-O2 -Wall -Wextra -Werror -static
+
+Python requires lz4. Run:
 
     python -m unittest discover -s hybrid/runtime-isolation -p test_repack.py
     python hybrid/runtime-isolation/repack.py --base published-v1.0.img \
-        --runtime turner-runtime-static --awk matching-system-awk --out candidate.img
+      --runtime turner-runtime-static --awk matching-system-awk \
+      --bootctl verified-bootctl --ziptool r97-streaming-ziptool \
+      --ziparchive r97-streaming-libziparchive.so --display cached-fast \
+      --out candidate.img
 
-The repacker prints a manifest. Device installation is deliberately separate.
-Keep a verified original vendor_boot backup and a wired recovery path. Never
-write LK, preloader, user data, metadata, or other protected partitions.
+Flashing is separate. Keep an original backup and wired recovery path. Never
+write LK, preloader or other protected partitions.

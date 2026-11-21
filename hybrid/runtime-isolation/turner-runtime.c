@@ -21,6 +21,22 @@ static int fail(const char *s) {
     errno=error; perror(s); return 1;
 }
 int main(int argc, char **argv) {
+    const char *name = strrchr(argv[0], '/');
+    name = name ? name + 1 : argv[0];
+    if (!strcmp(name, "bootctl")) {
+        // The stock MTK service speaks the stock ramdisk Binder ABI. Do not
+        // inherit recovery GUI SDK35 or an installer's older C++ libraries.
+        unsetenv("LD_LIBRARY_PATH");
+        unsetenv("LD_PRELOAD");
+        execv("/system/bin/turner-bootctl-real", argv);
+        return fail("exec stock-ABI bootctl");
+    }
+    if (!strcmp(name, "ziptool") || !strcmp(name, "unzip") || !strcmp(name, "zipinfo")) {
+        unsetenv("LD_PRELOAD");
+        setenv("LD_LIBRARY_PATH","/system/lib64/turner-stream:/system/lib64/twrp16:/system/lib64",1);
+        execv("/system/bin/turner-ziptool-real", argv);
+        return fail("exec bounded ZIP64 extractor");
+    }
     if (argc == 2 && !strcmp(argv[1], "hold")) {
         if (unshare(CLONE_NEWNS)) return fail("unshare runtime mounts");
         if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL))

@@ -3,9 +3,13 @@
 import argparse, hashlib, json, stat, struct
 from pathlib import Path
 import lz4.block
+from patch_display import patch as patch_display
 
 BASE_SHA = 'e9ede605818609f9cbb7725feef7bbfc0490b15200f2d88d85ee87051af3714a'
 AWK_SHA = '2550bd68e2ca01c4938023e096b2d96686e4d03fad2e97a1566a41eda2ac02fb'
+BOOTCTL_SHA = '9eda0f098ca5902fdee69ce5c90384748f2d42b93e562fd0915b4216e3156544'
+ZIPTOOL_SHA = 'dc381c58185d0a78bf638f6d0d4ca9bc9c5bc03976910a0c44b028acdfc090d8'
+ZIPARCHIVE_SHA = '2abc0d14e8e3cffb0c8bf9b129526d3aa803b53370942c97c826f22cacbc2ba4'
 def sha(b): return hashlib.sha256(b).hexdigest()
 def align(n, size=4096): return (n + size-1) // size * size
 def decompress(b):
@@ -63,6 +67,11 @@ def layout(data):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--base',type=Path,required=True);p.add_argument('--out',type=Path,required=True)
     p.add_argument('--runtime',type=Path,required=True);p.add_argument('--awk',type=Path,required=True)
+    p.add_argument('--bootctl',type=Path,help='Verified client; install static environment-clean launcher')
+    p.add_argument('--ziptool',type=Path,help='Verified bounded stdout extractor from tested R97 build')
+    p.add_argument('--ziparchive',type=Path,help='Matching library, installed in a private search directory')
+    p.add_argument('--display',choices=['unchanged','cached60','cached-fast'],default='unchanged',
+                   help='Exact-build MTK cached drawing; high refresh is separately selected')
     args=p.parse_args();base=args.base.read_bytes();assert sha(base)==BASE_SHA
     frag,dtb,table=layout(base);rows=read_cpio(decompress(frag[1]));original={n:(f,b) for n,f,b in rows}
     changes={};here=Path(__file__).resolve().parent
@@ -75,6 +84,18 @@ def main():
     changes['system/bin/turner-runtime']=(0o100755,runtime)
     changes['system/bin/turner-runtime-stage.sh']=(0o100755,(here/'turner-runtime-stage.sh').read_bytes())
     changes['system/bin/awk']=(0o100755,awk)
+    if args.bootctl:
+        bootctl=args.bootctl.read_bytes();assert sha(bootctl)==BOOTCTL_SHA, 'unverified bootctl build'
+        changes['system/bin/turner-bootctl-real']=(0o100755,bootctl)
+        changes['system/bin/bootctl']=(0o120777,b'turner-runtime')
+    assert bool(args.ziptool)==bool(args.ziparchive), 'both streaming inputs are required'
+    if args.ziptool:
+        ziptool=args.ziptool.read_bytes();ziparchive=args.ziparchive.read_bytes()
+        assert sha(ziptool)==ZIPTOOL_SHA and sha(ziparchive)==ZIPARCHIVE_SHA, 'unverified streaming build'
+        changes['system/bin/turner-ziptool-real']=(0o100755,ziptool)
+        changes['system/bin/ziptool']=(0o120777,b'turner-runtime')
+        changes['system/lib64/turner-stream']=(0o40755,b'')
+        changes['system/lib64/turner-stream/libziparchive.so']=(0o100644,ziparchive)
     rcname='system/etc/init/hybrid-services.rc';rc=original[rcname][1].decode()
     targets=['/vendor/bin/tee-supplicant','/system/bin/turner-tee-sup.sh keymint','/system/bin/turner-tee-sup.sh gatekeeper','/system/bin/turner-touch-sup.sh','/system/bin/turner-ks2-sup.sh','/system/bin/turner-vibrator-sup.sh']
     for command in targets:
@@ -83,7 +104,20 @@ def main():
     assert rc.count('capabilities DAC_OVERRIDE SYS_RAWIO')==1
     rc=rc.replace('capabilities DAC_OVERRIDE SYS_RAWIO','capabilities DAC_OVERRIDE SYS_RAWIO SYS_ADMIN SYS_CHROOT SYS_PTRACE')
     rc+='\n# RAM-backed namespace keeper. Must start after staging, before HALs.\nservice turner-runtime-keeper /system/bin/turner-runtime hold\n    class hal\n    user root\n    group root system\n    seclabel u:r:recovery:s0\n    disabled\n'
+    if args.bootctl:
+        bootrc='system/etc/init/android.hardware.boot-service.mtk_recovery.rc'
+        platform={n:b for n,_,b in read_cpio(decompress(frag[0]))}
+        assert b'service vendor.boot-default ' in platform[bootrc]
+        assert b'class early_hal' in platform[bootrc]
+        rc+='\n# Recovery starts default/hal, but not early_hal. Start only BootControl.\non boot\n    start vendor.boot-default\n'
     changes[rcname]=(original[rcname][0][1],rc.encode())
+    if args.display != 'unchanged':
+        lib='system/lib64/twrp16/libtwrpminui.so'
+        changes[lib]=(original[lib][0][1],patch_display(original[lib][1]))
+        rc+='\n# Independent knobs: MTK legacy KMS does not require uncached drawing.\n'
+        rc+='on init\n    setprop twrp.drm.direct_scanout false\n'
+        rc+='    setprop twrp.drm.fast_mode '+('true' if args.display=='cached-fast' else 'false')+'\n'
+        changes[rcname]=(original[rcname][0][1],rc.encode())
     name='system/bin/turner-setup.sh';body=original[name][1].decode()
     marker='log_msg "step:persist+metadata ready"\n';assert body.count(marker)==1
     inject='''
@@ -130,7 +164,7 @@ fi
         if n not in changes:assert check[n]==(f,b),n
     assert set(check)==set(original)|set(changes)
     args.out.write_bytes(result)
-    manifest={'base_sha256':sha(base),'sha256':sha(result),'size':len(result),'runtime_sha256':sha(runtime),'awk_sha256':sha(awk),'f0_unchanged':True,'dtb_unchanged':True,'changed_or_added':sorted(changes),'free_bytes':len(base)-vo2-512-64}
+    manifest={'base_sha256':sha(base),'sha256':sha(result),'size':len(result),'runtime_sha256':sha(runtime),'awk_sha256':sha(awk),'bootctl_sha256':BOOTCTL_SHA if args.bootctl else None,'streaming_ziptool_sha256':ZIPTOOL_SHA if args.ziptool else None,'streaming_library_sha256':ZIPARCHIVE_SHA if args.ziparchive else None,'display':args.display,'f0_unchanged':True,'dtb_unchanged':True,'changed_or_added':sorted(changes),'free_bytes':len(base)-vo2-512-64}
     args.out.with_suffix('.json').write_text(json.dumps(manifest,indent=2)+'\n');print(json.dumps(manifest,indent=2))
 
 if __name__=='__main__':main()
